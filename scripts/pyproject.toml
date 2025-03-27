@@ -1,0 +1,22 @@
+[project]
+name = "sky_generator"
+version = "0.1.0"
+description = "A tool for generating isometric sky backgrounds for games"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
