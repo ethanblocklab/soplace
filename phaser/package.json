@@ -28,10 +28,14 @@
         "build-nolog": "next build"
     },
     "dependencies": {
+        "@tanstack/react-query": "^5.70.0",
+        "connectkit": "^1.8.2",
         "next": "14.2.3",
         "phaser": "^3.88.2",
         "react": "^18",
-        "react-dom": "^18"
+        "react-dom": "^18",
+        "viem": "2.x",
+        "wagmi": "^2.14.15"
     },
     "devDependencies": {
         "@types/node": "^20",
@@ -40,3 +44,4 @@
         "typescript": "^5"
     }
 }
+
