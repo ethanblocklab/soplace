@@ -220,9 +220,11 @@ export class Game extends Scene {
         const tileX = this.map.worldToTileX(worldPoint.x);
         const tileY = this.map.worldToTileY(worldPoint.y);
 
+        if (!tileX || !tileY) throw new Error("Failed to get tile position");
+
         this.previewSprite.setPosition(
-            this.map.tileToWorldX(tileX) + 32,
-            this.map.tileToWorldY(tileY) + 32
+            this.map.tileToWorldX(tileX) ?? 0 + 32,
+            this.map.tileToWorldY(tileY) ?? 0 + 32
         );
     }
 
@@ -243,8 +245,8 @@ export class Game extends Scene {
 
         if (this.previewSprite) {
             const canPlace = this.canPlaceBuilding(
-                this.map.worldToTileX(snappedWorldPoint.x),
-                this.map.worldToTileY(snappedWorldPoint.y)
+                this.map.worldToTileX(snappedWorldPoint.x) ?? 0,
+                this.map.worldToTileY(snappedWorldPoint.y) ?? 0
             );
 
             this.previewSprite.setPosition(
@@ -266,6 +268,8 @@ export class Game extends Scene {
 
         const tileX = this.map.worldToTileX(worldPoint.x);
         const tileY = this.map.worldToTileY(worldPoint.y);
+
+        if (!tileX || !tileY) throw new Error("Failed to get tile position");
 
         const snappedWorldPoint = {
             x: tileX * 64 + this.map.tileWidth / 2,
@@ -306,15 +310,40 @@ export class Game extends Scene {
     }
 
     placeBuilding(tileX: number, tileY: number, frameIndex: number) {
-        if (this.groundLayer.getTileAt(tileX, tileY)) {
-            const newTile = this.buildingLayer.putTileAt(
-                frameIndex + 1,
-                tileX,
-                tileY
-            );
-            if (newTile) {
-                newTile.setAlpha(1);
-            }
+        // Check if the tile exists at the specified position
+        const groundTile = this.groundLayer.getTileAt(tileX, tileY);
+
+        if (groundTile) {
+            // First, emit an event to call the contract function
+            EventBus.emit("place-building", tileX, tileY, frameIndex);
+
+            // Add event listener for when the building is placed on-chain
+            const handleBuildingPlaced = (success: boolean, error?: Error) => {
+                // Remove the listener to avoid memory leaks
+                EventBus.removeListener(
+                    "building-placed",
+                    handleBuildingPlaced
+                );
+
+                if (success) {
+                    // If the transaction was successful, visualize the tile
+                    const newTile = this.buildingLayer.putTileAt(
+                        frameIndex + 1,
+                        tileX,
+                        tileY
+                    );
+                    if (newTile) {
+                        newTile.setAlpha(1);
+                    }
+
+                    console.log(
+                        `Building placed at (${tileX}, ${tileY}) with type ${frameIndex}`
+                    );
+                }
+            };
+
+            // Add the listener
+            EventBus.on("building-placed", handleBuildingPlaced);
         }
     }
 
@@ -322,3 +351,4 @@ export class Game extends Scene {
         this.controls.update(delta);
     }
 }
+

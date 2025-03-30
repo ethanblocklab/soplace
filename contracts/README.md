@@ -89,6 +89,11 @@ To check what's on a tile:
 - Funds can only be withdrawn by the owner
 - Players can only modify their own placements
 
+## Deployment
+
+Implementation deployed at: 0x12B1247B11c02CC8Dce4f984f7A7fE7Cef9b7E67
+Proxy deployed at: 0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4
+
 ## License
 
 This project is licensed under the MIT License.

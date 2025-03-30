@@ -1,5 +1,14 @@
-import { Events } from "phaser";
+import { EventEmitter } from "events";
 
-// Used to emit events between React components and Phaser scenes
-// https://newdocs.phaser.io/docs/3.70.0/Phaser.Events.EventEmitter
-export const EventBus = new Events.EventEmitter();
+// Define types for events
+export interface EventTypes {
+    "current-scene-ready": (scene: Phaser.Scene) => void;
+    "place-building": (x: number, y: number, buildingType: number) => void;
+    "building-placed": (success: boolean, error?: Error) => void;
+}
+
+// Create a typed EventEmitter
+export const EventBus = new EventEmitter();
+
+export default EventBus;
+
