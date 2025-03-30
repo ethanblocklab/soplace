@@ -84,5 +84,5 @@ export const isometricTilemapAbi = [
 
 // Replace with the proxy address after deployment to Somnia testnet
 export const isometricTilemapAddress =
-    "0x0000000000000000000000000000000000000000"; // Update after deployment
+    "0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4"; // Update after deployment
 

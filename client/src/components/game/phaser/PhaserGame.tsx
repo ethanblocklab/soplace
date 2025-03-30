@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef } from "react";
 import StartGame from "./main";
 import { EventBus } from "./EventBus";
-import { useSoPlaceContract } from "@/hooks/useContract";
+import { useIsometricTilemapContract } from "@/hooks/useContract";
 
 export interface IRefPhaserGame {
     game: Phaser.Game | null;
@@ -17,48 +17,38 @@ interface IProps {
 export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
     function PhaserGame({ currentActiveScene }, ref) {
         const game = useRef<Phaser.Game | null>(null!);
-        const { placeBuilding, isPending, isSuccess, error } =
-            useSoPlaceContract();
+        const { placeItem, isPending, isSuccess, error } =
+            useIsometricTilemapContract();
 
         // Handle contract interactions
         useEffect(() => {
             // Listen for place-building events from the Game scene
-            const handlePlaceBuilding = async (
-                x: number,
-                y: number,
-                buildingType: number
-            ) => {
+            const handlePlaceItem = (x: number, y: number, itemId: number) => {
                 try {
-                    console.log(
-                        `Calling contract to place building at (${x}, ${y}) with type ${buildingType}`
-                    );
-                    await placeBuilding({ x, y, buildingType });
+                    placeItem({ x, y, itemId });
                 } catch (err) {
-                    console.error("Error placing building:", err);
                     EventBus.emit(
-                        "building-placed",
+                        "item-placed",
                         false,
                         err instanceof Error ? err : new Error("Unknown error")
                     );
                 }
             };
 
-            EventBus.on("place-building", handlePlaceBuilding);
+            EventBus.on("place-item", handlePlaceItem);
 
             return () => {
-                EventBus.removeListener("place-building", handlePlaceBuilding);
+                EventBus.removeListener("place-item", handlePlaceItem);
             };
-        }, [placeBuilding]);
+        }, [placeItem]);
 
         // Update the game when transaction status changes
         useEffect(() => {
             if (isSuccess) {
-                console.log("Building placed successfully on the blockchain");
-                EventBus.emit("building-placed", true);
+                EventBus.emit("item-placed", true);
             } else if (error) {
-                console.error("Error in transaction:", error);
                 EventBus.emit(
-                    "building-placed",
+                    "item-placed",
                     false,
                     error instanceof Error ? error : new Error("Unknown error")
                 );

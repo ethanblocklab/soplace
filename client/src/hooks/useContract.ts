@@ -1,65 +1,40 @@
 "use client";
 
-import { useAccount, useWriteContract, useReadContract } from "wagmi";
-import { soPlaceAbi, soPlaceAddress } from "@/config/contracts";
+import { useAccount, useWriteContract } from "wagmi";
+import {
+    isometricTilemapAbi,
+    isometricTilemapAddress,
+} from "@/config/contracts";
 
-interface PlaceBuildingParams {
+interface PlaceItemParams {
     x: number;
     y: number;
-    buildingType: number;
+    itemId: number;
 }
 
-export function useSoPlaceContract() {
+export function useIsometricTilemapContract() {
     const { address } = useAccount();
 
     // For writing transactions (placing buildings)
-    const {
-        writeContract: writeContractRaw,
-        isPending,
-        isSuccess,
-        error,
-    } = useWriteContract();
+    const { writeContract, isPending, isSuccess, error } = useWriteContract();
 
     // Function to place a building
-    const placeBuilding = async ({
-        x,
-        y,
-        buildingType,
-    }: PlaceBuildingParams) => {
+    const placeItem = ({ x, y, itemId }: PlaceItemParams) => {
         if (!address) return null;
 
-        return writeContractRaw({
-            address: soPlaceAddress,
-            abi: soPlaceAbi,
-            functionName: "placeBuilding",
-            args: [x, y, buildingType],
-        });
-    };
-
-    // For reading from the contract
-    const { data: buildingData, refetch } = useReadContract({
-        address: soPlaceAddress,
-        abi: soPlaceAbi,
-        functionName: "getBuildingAt",
-        args: [0, 0], // Default values, should be changed when calling
-    });
-
-    // Function to get a building at a specific location
-    const getBuildingAt = async (x: number, y: number) => {
-        return useReadContract({
-            address: soPlaceAddress,
-            abi: soPlaceAbi,
-            functionName: "getBuildingAt",
-            args: [x, y],
+        writeContract({
+            address: isometricTilemapAddress,
+            abi: isometricTilemapAbi,
+            functionName: "placeItem",
+            args: [x, y, itemId],
         });
     };
 
     return {
-        placeBuilding,
-        getBuildingAt,
+        placeItem,
         isPending,
         isSuccess,
         error,
-        refetch,
     };
 }
+
