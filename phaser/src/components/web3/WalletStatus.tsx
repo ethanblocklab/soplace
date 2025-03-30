@@ -1,3 +1,5 @@
+"use client";
+
 import { ConnectKitButton } from "connectkit";
 import { useAccount, useBalance } from "wagmi";
 import styles from "./WalletStatus.module.css";

@@ -1,3 +1,5 @@
+"use client";
+
 import { ReactNode } from "react";
 import { WagmiProvider, createConfig, http } from "wagmi";
 import { somniaTestnet } from "wagmi/chains";

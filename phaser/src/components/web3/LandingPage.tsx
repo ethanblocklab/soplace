@@ -1,5 +1,7 @@
+"use client";
+
 import { useEffect } from "react";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { ConnectKitButton } from "connectkit";
 import { useAccount } from "wagmi";
 import styles from "./LandingPage.module.css";

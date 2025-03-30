@@ -198,37 +198,32 @@ export class Game extends Scene {
         //     this.buildingTiles
         // );
         // container.setScrollFactor(0);
-
-        // // Make the container scrollable
-        // const mask = this.add.graphics();
-        // mask.fillStyle(0xffffff, 0);
-        // mask.fillRect(
-        //     0,
-        //     0,
-        //     columns * (tileSize + padding) + padding,
-        //     containerHeight
-        // );
-        // mask.setScrollFactor(0);
-
-        // container.setMask(new Phaser.Display.Masks.GeometryMask(this, mask));
     }
 
     onDragStart(
         pointer: Phaser.Input.Pointer,
         gameObject: Phaser.GameObjects.Sprite
     ) {
+        this.isDragging = false;
         this.draggedTile = gameObject;
-        gameObject.setTint(0x66ff66);
 
-        // Create preview sprite
-        this.previewSprite = this.add.sprite(
-            0,
-            0,
-            "tiles",
-            gameObject.getData("frameIndex")
+        const frameIndex = gameObject.getData("frameIndex");
+
+        this.previewSprite = this.add
+            .sprite(0, 0, "tiles", frameIndex)
+            .setAlpha(0.5);
+
+        const worldPoint = this.input.activePointer.positionToCamera(
+            this.cameras.main
+        ) as Phaser.Math.Vector2;
+
+        const tileX = this.map.worldToTileX(worldPoint.x);
+        const tileY = this.map.worldToTileY(worldPoint.y);
+
+        this.previewSprite.setPosition(
+            this.map.tileToWorldX(tileX) + 32,
+            this.map.tileToWorldY(tileY) + 32
         );
-        this.previewSprite.setAlpha(0.5);
-        this.previewSprite.setTint(0x00ff00);
     }
 
     onDrag(
@@ -237,41 +232,27 @@ export class Game extends Scene {
         dragX: number,
         dragY: number
     ) {
-        gameObject.x = dragX;
-        gameObject.y = dragY;
+        const worldPoint = this.input.activePointer.positionToCamera(
+            this.cameras.main
+        ) as Phaser.Math.Vector2;
 
-        // Update preview sprite position
+        const snappedWorldPoint = {
+            x: Math.floor(worldPoint.x / 64) * 64 + this.map.tileWidth / 2,
+            y: Math.floor(worldPoint.y / 64) * 64 + this.map.tileHeight / 2,
+        };
+
         if (this.previewSprite) {
-            const worldPoint = this.cameras.main.getWorldPoint(
-                pointer.x,
-                pointer.y
-            );
-            const pointerXY = this.map.worldToTileXY(
-                worldPoint.x,
-                worldPoint.y,
-                true
+            const canPlace = this.canPlaceBuilding(
+                this.map.worldToTileX(snappedWorldPoint.x),
+                this.map.worldToTileY(snappedWorldPoint.y)
             );
 
-            if (pointerXY) {
-                const tileX = pointerXY.x;
-                const tileY = pointerXY.y;
+            this.previewSprite.setPosition(
+                snappedWorldPoint.x,
+                snappedWorldPoint.y
+            );
 
-                if (this.canPlaceBuilding(tileX, tileY)) {
-                    this.previewSprite.setAlpha(0.5);
-                    this.previewSprite.setTint(0x00ff00);
-                } else {
-                    this.previewSprite.setAlpha(0.3);
-                    this.previewSprite.setTint(0xff0000);
-                }
-
-                const worldXY = this.map.tileToWorldXY(tileX, tileY);
-                if (worldXY) {
-                    this.previewSprite.setPosition(
-                        worldXY.x + 32,
-                        worldXY.y + 32
-                    );
-                }
-            }
+            this.previewSprite.setTint(canPlace ? 0x00ff00 : 0xff0000);
         }
     }
 
@@ -279,83 +260,65 @@ export class Game extends Scene {
         pointer: Phaser.Input.Pointer,
         gameObject: Phaser.GameObjects.Sprite
     ) {
-        gameObject.clearTint();
+        const worldPoint = this.input.activePointer.positionToCamera(
+            this.cameras.main
+        ) as Phaser.Math.Vector2;
 
-        // Remove preview sprite
+        const tileX = this.map.worldToTileX(worldPoint.x);
+        const tileY = this.map.worldToTileY(worldPoint.y);
+
+        const snappedWorldPoint = {
+            x: tileX * 64 + this.map.tileWidth / 2,
+            y: tileY * 64 + this.map.tileHeight / 2,
+        };
+
+        // Only place if it's a valid position
+        if (
+            tileX >= 0 &&
+            tileY >= 0 &&
+            tileX < this.map.width &&
+            tileY < this.map.height
+        ) {
+            const frameIndex = gameObject.getData("frameIndex");
+            if (this.canPlaceBuilding(tileX, tileY)) {
+                this.placeBuilding(tileX, tileY, frameIndex);
+            }
+        }
+
         if (this.previewSprite) {
             this.previewSprite.destroy();
             this.previewSprite = null;
         }
 
-        const worldPoint = this.cameras.main.getWorldPoint(
-            pointer.x,
-            pointer.y
-        );
-
-        const pointerXY = this.map.worldToTileXY(worldPoint.x, worldPoint.y);
-        if (!pointerXY) return;
-
-        const tileX = Math.floor(pointerXY.x);
-        const tileY = Math.floor(pointerXY.y);
-
-        if (this.canPlaceBuilding(tileX, tileY)) {
-            const frameIndex = gameObject.getData("frameIndex");
-            this.placeBuilding(tileX, tileY, frameIndex + 1);
-        }
-
-        const dragStartX = gameObject.input?.dragStartX ?? gameObject.x;
-        const dragStartY = gameObject.input?.dragStartY ?? gameObject.y;
-        gameObject.setPosition(dragStartX, dragStartY);
-
-        // Remove the dragged tile
-        if (this.draggedTile) {
-            this.draggedTile = null;
-        }
+        this.draggedTile = null;
     }
 
     canPlaceBuilding(tileX: number, tileY: number): boolean {
-        const buildingTile = this.buildingLayer.getTileAt(tileX, tileY, true);
-        if (buildingTile && buildingTile.index !== -1) {
+        if (
+            tileX < 0 ||
+            tileY < 0 ||
+            tileX >= this.map.width ||
+            tileY >= this.map.height
+        ) {
             return false;
         }
-
-        const groundTile = this.groundLayer.getTileAt(tileX, tileY, true);
-        return groundTile !== null && groundTile.index !== -1;
+        return true;
     }
 
     placeBuilding(tileX: number, tileY: number, frameIndex: number) {
-        this.buildingLayer.putTileAt(frameIndex, tileX, tileY);
+        if (this.groundLayer.getTileAt(tileX, tileY)) {
+            const newTile = this.buildingLayer.putTileAt(
+                frameIndex + 1,
+                tileX,
+                tileY
+            );
+            if (newTile) {
+                newTile.setAlpha(1);
+            }
+        }
     }
-
-    // createClouds() {
-    //     for (let i = 0; i < 10; i++) {
-    //         const x = Phaser.Math.Between(0, this.cameras.main.width);
-    //         const y = Phaser.Math.Between(0, this.cameras.main.height * 0.3);
-    //         const frame = Phaser.Math.Between(0, 5);
-
-    //         const cloud = this.add.image(x, y, "clouds", frame);
-
-    //         this.clouds.push(cloud);
-    //     }
-    // }
 
     update(time: number, delta: number) {
-        if (!this.isDragging) {
-            this.controls.update(delta);
-        }
-
-        // Phaser.Actions.IncX(this.clouds, 0.5, 0.05);
-
-        // Phaser.Actions.WrapInRectangle(
-        //     this.clouds,
-        //     new Phaser.Geom.Rectangle(
-        //         -64,
-        //         0,
-        //         this.cameras.main.width + 128,
-        //         this.cameras.main.height * 0.7
-        //     ),
-        //     64
-        // );
+        this.controls.update(delta);
     }
 }
-
