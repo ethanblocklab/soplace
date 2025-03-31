@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useLayoutEffect, useRef } from "react";
 import StartGame from "./main";
 import { EventBus } from "./EventBus";
 import { useIsometricTilemapContract } from "@/hooks/useContract";
+import { toast } from "sonner";
 
 export interface IRefPhaserGame {
     game: Phaser.Game | null;
@@ -42,18 +43,31 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
             };
         }, [placeItem]);
 
-        // Update the game when transaction status changes
+        // Show toast for pending transactions
         useEffect(() => {
-            if (isSuccess) {
+            const toastId = "transaction-toast";
+
+            if (isPending) {
+                toast.loading("Placing item on the blockchain...", {
+                    id: toastId,
+                });
+            } else if (isSuccess) {
+                toast.success("Item successfully placed!", { id: toastId });
                 EventBus.emit("item-placed", true);
             } else if (error) {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to place item",
+                    { id: toastId }
+                );
                 EventBus.emit(
                     "item-placed",
                     false,
                     error instanceof Error ? error : new Error("Unknown error")
                 );
             }
-        }, [isSuccess, error]);
+        }, [isPending, isSuccess, error]);
 
         useLayoutEffect(() => {
             if (game.current === null) {
@@ -105,15 +119,7 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
             };
         }, [currentActiveScene, ref]);
 
-        return (
-            <div id="game-container">
-                {isPending && (
-                    <div className="transaction-status pending">
-                        Placing item on the blockchain...
-                    </div>
-                )}
-            </div>
-        );
+        return <div id="game-container"></div>;
     }
 );
 

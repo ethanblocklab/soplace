@@ -2,7 +2,7 @@ body {
     margin: 0;
     padding: 0;
     color: rgba(255, 255, 255, 0.87);
-    background-color: #000000; 
+    background-color: #000000;
     font-family: Arial, Helvetica, sans-serif;
 }
 
@@ -46,3 +46,23 @@ body {
         color: rgba(255, 255, 255, 0.3);
     }
 }
+
+/* Custom styling for Sonner toasts */
+:root {
+    --toaster-success-bg: #229c5b;
+    --toaster-error-bg: #e5484d;
+    --toaster-loading-bg: #1c7ed6;
+}
+
+/* Optional custom styles for Sonner */
+.sonner-toast {
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    font-weight: 500;
+}
+
+.sonner-loader {
+    border-color: rgba(255, 255, 255, 0.2);
+    border-top-color: white;
+}
+
