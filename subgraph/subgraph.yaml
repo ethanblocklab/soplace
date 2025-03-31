@@ -1,0 +1,41 @@
+specVersion: 1.0.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: IsometricTilemap
+    network: somnia-testnet
+    source:
+      address: "0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4"
+      abi: IsometricTilemap
+      startBlock: 32951420
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Initialized
+        - ItemPlaced
+        - ItemUpdated
+        - OwnershipTransferred
+        - PlacementFeeChanged
+        - Upgraded
+      abis:
+        - name: IsometricTilemap
+          file: ./abis/IsometricTilemap.json
+      eventHandlers:
+        - event: Initialized(uint64)
+          handler: handleInitialized
+        - event: ItemPlaced(indexed address,uint16,uint16,uint8)
+          handler: handleItemPlaced
+        - event: ItemUpdated(indexed address,uint16,uint16,uint8)
+          handler: handleItemUpdated
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+        - event: PlacementFeeChanged(uint256)
+          handler: handlePlacementFeeChanged
+        - event: Upgraded(indexed address)
+          handler: handleUpgraded
+      file: ./src/isometric-tilemap.ts
