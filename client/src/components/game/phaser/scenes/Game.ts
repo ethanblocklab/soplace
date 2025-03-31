@@ -259,7 +259,7 @@ export class Game extends Scene {
 
         if (this.canPlaceItem(tileX, tileY)) {
             const frameIndex = gameObject.getData("frameIndex");
-            this.placeItem(tileX, tileY, frameIndex + 1);
+            this.placeItem(tileX, tileY, frameIndex);
         }
 
         const dragStartX = gameObject.input?.dragStartX ?? gameObject.x;
