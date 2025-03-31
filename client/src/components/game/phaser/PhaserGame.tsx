@@ -5,6 +5,7 @@ import StartGame from "./main";
 import { EventBus } from "./EventBus";
 import { useIsometricTilemapContract } from "@/hooks/useContract";
 import { toast } from "sonner";
+import { getTileFrameToUserIndex } from "./utils/ItemTileMapper";
 
 export interface IRefPhaserGame {
     game: Phaser.Game | null;
@@ -25,8 +26,17 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
         useEffect(() => {
             // Listen for place-item events from the Game scene
             const handlePlaceItem = (x: number, y: number, itemId: number) => {
+                console.log("Placing item on the blockchain...", itemId);
+                // Check if itemId is a user index (1-18) and convert if needed
+                const tileFrameIndex = getTileFrameToUserIndex(itemId);
+                console.log("Tile frame index:", tileFrameIndex);
+                if (tileFrameIndex === -1) {
+                    toast.error("Invalid item ID", { id: itemId });
+                    return;
+                }
+
                 try {
-                    placeItem({ x, y, itemId });
+                    placeItem({ x, y, itemId: tileFrameIndex });
                 } catch (err) {
                     EventBus.emit(
                         "item-placed",

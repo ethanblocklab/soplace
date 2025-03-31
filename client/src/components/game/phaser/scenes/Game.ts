@@ -1,5 +1,6 @@
 import { Scene } from "phaser";
 import { EventBus } from "../EventBus";
+import { getAllItemTileFrames } from "../utils/ItemTileMapper";
 
 export class Game extends Scene {
     private controls: Phaser.Cameras.Controls.SmoothedKeyControl;
@@ -139,10 +140,7 @@ export class Game extends Scene {
         );
         background.setScrollFactor(0);
 
-        const itemTiles = [
-            50, 51, 80, 81, 84, 86, 110, 111, 112, 116, 117, 119, 120, 121, 124,
-            125, 128, 129,
-        ];
+        const itemTiles = getAllItemTileFrames();
         for (let i = 0; i < itemTiles.length; i++) {
             const row = Math.floor(i / columns);
             const col = i % columns;
@@ -283,6 +281,8 @@ export class Game extends Scene {
     }
 
     placeItem(tileX: number, tileY: number, frameIndex: number) {
+        // frameIndex could be either a direct tile frame index or a user index (1-18)
+        // We'll send the raw frameIndex to the blockchain
         EventBus.emit("place-item", tileX, tileY, frameIndex);
 
         // Add event listener for when the item is placed on-chain
