@@ -1,5 +1,8 @@
 {
   "somnia-testnet": {
+    "network": "Somnia Testnet",
+    "rpc": "https://dream-rpc.somnia.network",
+    "startBlock": 32951420,
     "IsometricTilemap": {
       "address": "0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4",
       "startBlock": 32951420
