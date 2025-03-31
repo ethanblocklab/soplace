@@ -1,6 +1,6 @@
 # So Place - 2.5D Grid-Based Placement Game
 
-A 2.5D isometric grid-based placement game built with Next.js and Phaser where players can drag and drop buildings and objects onto a map.
+A 2.5D isometric grid-based placement game built with Next.js and Phaser where players can drag and drop items and objects onto a map.
 
 ## Features
 
@@ -8,7 +8,7 @@ A 2.5D isometric grid-based placement game built with Next.js and Phaser where p
 - Drag and drop functionality for placing objects
 - Validation for object placement (preventing overlaps)
 - Object rotation
-- Simple UI for selecting different building types
+- Simple UI for selecting different item types
 - Ability to save the current map layout
 
 ## Technologies Used
@@ -55,7 +55,7 @@ A 2.5D isometric grid-based placement game built with Next.js and Phaser where p
 
 ## How to Play
 
-1. Select a building or object from the palette at the bottom of the screen
+1. Select a item or object from the palette at the bottom of the screen
 2. Click the "Place Selected Object" button to add it to the map
 3. Drag objects to reposition them on the grid
 4. Use the "Save Map" button to export your current layout (currently saves to console)

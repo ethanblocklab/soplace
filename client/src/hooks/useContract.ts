@@ -15,10 +15,10 @@ interface PlaceItemParams {
 export function useIsometricTilemapContract() {
     const { address } = useAccount();
 
-    // For writing transactions (placing buildings)
+    // For writing transactions (placing items)
     const { writeContract, isPending, isSuccess, error } = useWriteContract();
 
-    // Function to place a building
+    // Function to place an item
     const placeItem = ({ x, y, itemId }: PlaceItemParams) => {
         if (!address) return null;
 

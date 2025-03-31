@@ -22,7 +22,7 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
 
         // Handle contract interactions
         useEffect(() => {
-            // Listen for place-building events from the Game scene
+            // Listen for place-item events from the Game scene
             const handlePlaceItem = (x: number, y: number, itemId: number) => {
                 try {
                     placeItem({ x, y, itemId });
@@ -109,7 +109,7 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
             <div id="game-container">
                 {isPending && (
                     <div className="transaction-status pending">
-                        Placing building on the blockchain...
+                        Placing item on the blockchain...
                     </div>
                 )}
             </div>
