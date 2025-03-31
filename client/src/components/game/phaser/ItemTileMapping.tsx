@@ -4,6 +4,7 @@ import {
     getItemTileMapping,
     getAvailableUserIndices,
 } from "./utils/ItemTileMapper";
+import { ItemCostLabel } from "./ItemCostLabel";
 
 interface ItemTileMappingProps {
     showDetails?: boolean;
@@ -16,7 +17,10 @@ export function ItemTileMapping({ showDetails = false }: ItemTileMappingProps) {
     return (
         <div className="item-tile-mapping">
             <h3>Item Tile Mapping</h3>
-            <p>Use these numbers (1-18) when placing items:</p>
+            <div className="header-row">
+                <p>Use these numbers (1-18) when placing items:</p>
+                <ItemCostLabel compact />
+            </div>
 
             {showDetails ? (
                 <table className="mapping-table">
@@ -58,6 +62,17 @@ export function ItemTileMapping({ showDetails = false }: ItemTileMappingProps) {
                 h3 {
                     margin-top: 0;
                     margin-bottom: 8px;
+                }
+
+                .header-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 12px;
+                }
+
+                .header-row p {
+                    margin: 0;
                 }
 
                 .mapping-table {

@@ -5,6 +5,7 @@ import {
     isometricTilemapAbi,
     isometricTilemapAddress,
 } from "@/config/contracts";
+import { parseEther } from "viem";
 
 interface PlaceItemParams {
     x: number;
@@ -27,6 +28,7 @@ export function useIsometricTilemapContract() {
             abi: isometricTilemapAbi,
             functionName: "placeItem",
             args: [x, y, itemId],
+            value: parseEther("0.1"),
         });
     };
 

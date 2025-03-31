@@ -26,10 +26,9 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
         useEffect(() => {
             // Listen for place-item events from the Game scene
             const handlePlaceItem = (x: number, y: number, itemId: number) => {
-                console.log("Placing item on the blockchain...", itemId);
                 // Check if itemId is a user index (1-18) and convert if needed
                 const tileFrameIndex = getTileFrameToUserIndex(itemId);
-                console.log("Tile frame index:", tileFrameIndex);
+
                 if (tileFrameIndex === -1) {
                     toast.error("Invalid item ID", { id: itemId });
                     return;
@@ -58,19 +57,28 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
             const toastId = "transaction-toast";
 
             if (isPending) {
-                toast.loading("Placing item on the blockchain...", {
+                toast.loading("Placing item on the blockchain (0.1 STT)...", {
                     id: toastId,
                 });
             } else if (isSuccess) {
                 toast.success("Item successfully placed!", { id: toastId });
                 EventBus.emit("item-placed", true);
             } else if (error) {
-                toast.error(
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to place item",
-                    { id: toastId }
-                );
+                // Check if it's a user cancellation
+                if (
+                    error instanceof Error &&
+                    error.message.includes("User rejected the request")
+                ) {
+                    toast.error("Transaction cancelled", { id: toastId });
+                } else {
+                    toast.error(
+                        error instanceof Error
+                            ? error.message
+                            : "Failed to place item",
+                        { id: toastId }
+                    );
+                }
+
                 EventBus.emit(
                     "item-placed",
                     false,
