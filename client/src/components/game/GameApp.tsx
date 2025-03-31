@@ -1,18 +1,29 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
     IRefPhaserGame,
     PhaserGame,
 } from "@/components/game/phaser/PhaserGame";
+import { useItemsPlaced } from "@/hooks/useItemsPlaced";
+import { EventBus } from "./phaser/EventBus";
 
-function GameApp() {
+export function GameApp() {
     //  References to the PhaserGame component (game and scene are exposed)
-    const phaserRef = useRef<IRefPhaserGame | null>(null);
+    const gameRef = useRef<IRefPhaserGame>(null);
+    const { data: itemsData, isLoading, error } = useItemsPlaced();
+
+    // When items data is loaded from GraphQL, pass it to the game
+    useEffect(() => {
+        if (itemsData && itemsData.itemPlaceds && gameRef.current?.scene) {
+            // Emit the items-loaded event with the data
+            EventBus.emit("items-loaded", itemsData.itemPlaceds);
+        }
+    }, [itemsData, gameRef.current?.scene]);
 
     const addSprite = () => {
-        if (phaserRef.current) {
-            const scene = phaserRef.current.scene;
+        if (gameRef.current) {
+            const scene = gameRef.current.scene;
 
             if (scene) {
                 // Add a new sprite to the current scene at a random position
@@ -26,8 +37,8 @@ function GameApp() {
     };
 
     return (
-        <div id="app">
-            <PhaserGame ref={phaserRef} />
+        <div className="w-full h-full">
+            <PhaserGame ref={gameRef} />
             {/* <div>
                 <div>
                     <button className="button" onClick={addSprite}>Add New Sprite</button>

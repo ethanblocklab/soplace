@@ -2,6 +2,14 @@ import { Scene } from "phaser";
 import { EventBus } from "../EventBus";
 import { getAllItemTileFrames } from "../utils/ItemTileMapper";
 
+interface PlacedItem {
+    id: string;
+    itemId: number;
+    player: string;
+    x: number;
+    y: number;
+}
+
 export class Game extends Scene {
     private controls: Phaser.Cameras.Controls.SmoothedKeyControl;
     private draggedTile: Phaser.GameObjects.Sprite | null = null;
@@ -15,6 +23,7 @@ export class Game extends Scene {
     private dragStartY: number = 0;
     private cameraStartX: number = 0;
     private cameraStartY: number = 0;
+    private placedItems: PlacedItem[] = [];
 
     constructor() {
         super("Game");
@@ -119,6 +128,11 @@ export class Game extends Scene {
         this.input.on("dragend", this.onDragEnd, this);
 
         EventBus.emit("current-scene-ready", this);
+
+        // Listen for placed items from external sources
+        EventBus.on("items-loaded", (items: PlacedItem[]) =>
+            this.initPlacedItems(items)
+        );
     }
 
     createItemPanel() {
@@ -306,6 +320,29 @@ export class Game extends Scene {
 
     update(time: number, delta: number) {
         this.controls.update(delta);
+    }
+
+    // Initialize placed items from GraphQL data
+    initPlacedItems(items: PlacedItem[]) {
+        this.placedItems = items;
+
+        // Clear any existing items first
+        this.itemLayer.forEachTile((tile) => {
+            if (tile && tile.index !== -1) {
+                this.itemLayer.removeTileAt(tile.x, tile.y);
+            }
+        });
+
+        // Place each item on the tilemap
+        for (const item of this.placedItems) {
+            const { x, y, itemId } = item;
+
+            // Get the correct frame index for the tileset
+            const frameIndex = itemId;
+
+            // Place the item directly on the layer
+            this.itemLayer.putTileAt(frameIndex, x, y);
+        }
     }
 }
 
