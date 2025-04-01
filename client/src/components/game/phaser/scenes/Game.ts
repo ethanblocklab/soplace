@@ -1,6 +1,9 @@
 import { Scene } from "phaser";
 import { EventBus } from "../EventBus";
-import { getAllItemTileFrames } from "../utils/ItemTileMapper";
+import {
+    getAllItemTileFrames,
+    getUserIndexToTileFrame,
+} from "../utils/ItemTileMapper";
 
 interface PlacedItem {
     id: string;
@@ -327,21 +330,23 @@ export class Game extends Scene {
         this.placedItems = items;
 
         // Clear any existing items first
-        this.itemLayer.forEachTile((tile) => {
-            if (tile && tile.index !== -1) {
-                this.itemLayer.removeTileAt(tile.x, tile.y);
-            }
-        });
+        // this.itemLayer.forEachTile((tile) => {
+        //     if (tile && tile.index !== -1) {
+        //         this.itemLayer.removeTileAt(tile.x, tile.y);
+        //     }
+        // });
 
         // Place each item on the tilemap
         for (const item of this.placedItems) {
             const { x, y, itemId } = item;
 
             // Get the correct frame index for the tileset
-            const frameIndex = itemId;
+            const frameIndex = getUserIndexToTileFrame(itemId);
 
             // Place the item directly on the layer
-            this.itemLayer.putTileAt(frameIndex, x, y);
+            if (!this.itemLayer.getTileAt(x, y)) {
+                this.itemLayer.putTileAt(frameIndex + 1, x, y);
+            }
         }
     }
 }

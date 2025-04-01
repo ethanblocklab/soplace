@@ -36,9 +36,8 @@ export function useItemsPlaced() {
         queryFn: async () => {
             return executeQuery<ItemPlacedResponse>(ITEMS_PLACED_QUERY);
         },
-        refetchInterval: 30000, // Refetch every 30 seconds
+        refetchInterval: 5000, // Refetch every 5 seconds
         refetchOnWindowFocus: true,
-        staleTime: 10000,
     });
 }
 
