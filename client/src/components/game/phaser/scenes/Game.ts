@@ -34,6 +34,16 @@ export class Game extends Scene {
 
     preload() {
         this.load.setPath("assets");
+
+        // Setup loading events
+        this.load.on("progress", (value: number) => {
+            EventBus.emit("loading-progress", value);
+        });
+
+        this.load.on("complete", () => {
+            EventBus.emit("loading-progress", 1);
+        });
+
         this.load.tilemapTiledJSON("map", "tiles/map2.json");
         this.load.spritesheet("tiles", "tiles/outside.png", {
             frameWidth: 64,
@@ -46,11 +56,9 @@ export class Game extends Scene {
         const bg = this.add
             .image(0, 0, "background")
             .setOrigin(0, 0)
-            .setDisplaySize(1024, 768)
+            .setDisplaySize(this.cameras.main.width, this.cameras.main.height)
             .setScrollFactor(0, 0)
             .setDepth(-2);
-
-        // this.createClouds();
 
         // Create the map
         this.map = this.add.tilemap("map");
@@ -130,12 +138,12 @@ export class Game extends Scene {
         this.input.on("drag", this.onDrag, this);
         this.input.on("dragend", this.onDragEnd, this);
 
-        EventBus.emit("current-scene-ready", this);
-
         // Listen for placed items from external sources
         EventBus.on("items-loaded", (items: PlacedItem[]) =>
             this.initPlacedItems(items)
         );
+
+        EventBus.emit("current-scene-ready", this);
     }
 
     createItemPanel() {

@@ -1,6 +1,12 @@
 "use client";
 
-import { forwardRef, useEffect, useLayoutEffect, useRef } from "react";
+import {
+    forwardRef,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from "react";
 import StartGame from "./main";
 import { EventBus } from "./EventBus";
 import { useIsometricTilemapContract } from "@/hooks/useContract";
@@ -19,8 +25,30 @@ interface IProps {
 export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
     function PhaserGame({ currentActiveScene }, ref) {
         const game = useRef<Phaser.Game | null>(null!);
+        const [loadingProgress, setLoadingProgress] = useState(0);
+        const [isLoading, setIsLoading] = useState(true);
         const { placeItem, isPending, isSuccess, error } =
             useIsometricTilemapContract();
+
+        // Handle loading progress
+        useEffect(() => {
+            const handleLoadingProgress = (progress: number) => {
+                setLoadingProgress(progress);
+                if (progress >= 1) {
+                    // Add a small delay before hiding the progress bar
+                    setTimeout(() => setIsLoading(false), 500);
+                }
+            };
+
+            EventBus.on("loading-progress", handleLoadingProgress);
+
+            return () => {
+                EventBus.removeListener(
+                    "loading-progress",
+                    handleLoadingProgress
+                );
+            };
+        }, []);
 
         // Handle contract interactions
         useEffect(() => {
@@ -137,7 +165,63 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
             };
         }, [currentActiveScene, ref]);
 
-        return <div id="game-container"></div>;
+        return (
+            <>
+                {isLoading && (
+                    <div
+                        style={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            width: "300px",
+                            zIndex: 1000,
+                        }}
+                    >
+                        <div
+                            style={{
+                                width: "100%",
+                                backgroundColor: "#444",
+                                borderRadius: "4px",
+                                padding: "2px",
+                                boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+                            }}
+                        >
+                            <div
+                                style={{
+                                    height: "20px",
+                                    width: `${loadingProgress * 100}%`,
+                                    backgroundColor: "#4CAF50",
+                                    borderRadius: "2px",
+                                    transition: "width 0.3s ease-in-out",
+                                }}
+                            />
+                        </div>
+                        <div
+                            style={{
+                                textAlign: "center",
+                                marginTop: "8px",
+                                color: "white",
+                                fontSize: "14px",
+                                fontWeight: "bold",
+                            }}
+                        >
+                            Loading Game... {Math.floor(loadingProgress * 100)}%
+                        </div>
+                    </div>
+                )}
+                <div
+                    id="game-container"
+                    style={{
+                        width: "100vw",
+                        height: "100vh",
+                        margin: 0,
+                        padding: 0,
+                        visibility: isLoading ? "hidden" : "visible",
+                    }}
+                ></div>
+            </>
+        );
     }
 );
 

@@ -11,13 +11,6 @@ export default function Home() {
     const router = useRouter();
     const { isConnected } = useAccount();
 
-    // Redirect to game if already connected
-    useEffect(() => {
-        if (isConnected) {
-            router.push("/game");
-        }
-    }, [isConnected, router]);
-
     return (
         <main className={styles.mainContainer}>
             <AnimatedBackground />
@@ -32,12 +25,20 @@ export default function Home() {
                             {({ isConnected, show }) => {
                                 return (
                                     <button
-                                        onClick={show}
-                                        className={styles.primaryButton}
+                                        onClick={
+                                            isConnected
+                                                ? () => router.push("/game")
+                                                : show
+                                        }
+                                        className={
+                                            isConnected
+                                                ? styles.connectedButton
+                                                : styles.primaryButton
+                                        }
                                     >
                                         {isConnected
-                                            ? "Connected"
-                                            : "Get Started"}
+                                            ? "Start Game"
+                                            : "Connect Wallet"}
                                     </button>
                                 );
                             }}

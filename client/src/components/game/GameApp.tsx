@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     IRefPhaserGame,
     PhaserGame,
@@ -11,39 +11,38 @@ import { EventBus } from "./phaser/EventBus";
 export function GameApp() {
     //  References to the PhaserGame component (game and scene are exposed)
     const gameRef = useRef<IRefPhaserGame>(null);
+    const [isSceneReady, setIsSceneReady] = useState(false);
     const { data: itemsData, isLoading, error } = useItemsPlaced();
+
+    // Listen for scene ready event
+    useEffect(() => {
+        const handleSceneReady = () => {
+            setIsSceneReady(true);
+        };
+
+        EventBus.on("current-scene-ready", handleSceneReady);
+
+        return () => {
+            EventBus.removeListener("current-scene-ready", handleSceneReady);
+        };
+    }, []);
 
     // When items data is loaded from GraphQL, pass it to the game
     useEffect(() => {
-        if (itemsData && itemsData.itemPlaceds && gameRef.current?.scene) {
+        if (
+            itemsData &&
+            itemsData.itemPlaceds &&
+            gameRef.current?.scene &&
+            isSceneReady
+        ) {
             // Emit the items-loaded event with the data
             EventBus.emit("items-loaded", itemsData.itemPlaceds);
         }
-    }, [itemsData, gameRef.current?.scene]);
-
-    const addSprite = () => {
-        if (gameRef.current) {
-            const scene = gameRef.current.scene;
-
-            if (scene) {
-                // Add a new sprite to the current scene at a random position
-                const x = Phaser.Math.Between(64, scene.scale.width - 64);
-                const y = Phaser.Math.Between(64, scene.scale.height - 64);
-
-                //  `add.sprite` is a Phaser GameObjectFactory method and it returns a Sprite Game Object instance
-                scene.add.sprite(x, y, "star");
-            }
-        }
-    };
+    }, [itemsData, isSceneReady]);
 
     return (
         <div className="w-full h-full">
             <PhaserGame ref={gameRef} />
-            {/* <div>
-                <div>
-                    <button className="button" onClick={addSprite}>Add New Sprite</button>
-                </div>
-            </div> */}
         </div>
     );
 }

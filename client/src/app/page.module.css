@@ -81,6 +81,20 @@
     box-shadow: 0 4px 15px rgba(255, 123, 0, 0.4);
 }
 
+.connectedButton {
+    background: linear-gradient(135deg, #4caf50, #45a049);
+    color: white;
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+    padding: 12px 28px;
+    font-size: 1.1rem;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    border: none;
+    outline: none;
+}
+
 .secondaryButton {
     background: rgba(255, 255, 255, 0.2);
     color: white;
@@ -91,6 +105,11 @@
 .primaryButton:hover {
     transform: translateY(-3px);
     box-shadow: 0 6px 20px rgba(255, 123, 0, 0.5);
+}
+
+.connectedButton:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
 }
 
 .secondaryButton:hover {
