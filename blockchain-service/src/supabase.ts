@@ -58,7 +58,18 @@ export const storeItemPlaced = async (event: ItemPlaced): Promise<void> => {
 // Get the latest processed block number to resume from
 export const getLatestProcessedBlock = async (): Promise<number | null> => {
   try {
-    // Try from both event tables and get the higher value
+    // First try to get from the dedicated processed_blocks table
+    const processedBlockResult = await supabase
+      .from('processed_blocks')
+      .select('block_number')
+      .eq('id', 1)
+      .single()
+
+    if (processedBlockResult.data) {
+      return processedBlockResult.data.block_number
+    }
+
+    // Fall back to checking the event tables
     const [itemPlacedResult] = await Promise.all([
       supabase
         .from('item_placed')
@@ -72,5 +83,33 @@ export const getLatestProcessedBlock = async (): Promise<number | null> => {
   } catch (error) {
     logger.error({ error }, 'Failed to get latest processed block')
     return null
+  }
+}
+
+// Store the last processed block number
+export const storeLastProcessedBlock = async (
+  blockNumber: number,
+): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('processed_blocks')
+      .upsert({ id: 1, block_number: blockNumber, updated_at: new Date() })
+      .select()
+
+    if (error) {
+      logger.error(
+        { error, blockNumber },
+        'Failed to store last processed block',
+      )
+      throw error
+    }
+
+    logger.debug({ blockNumber }, 'Stored last processed block')
+  } catch (error) {
+    logger.error(
+      { error, blockNumber },
+      'Supabase error when storing last processed block',
+    )
+    throw error
   }
 }

@@ -13,7 +13,11 @@ import {
 import { somniaTestnet } from 'viem/chains'
 import { config } from './config'
 import { logger } from './logger'
-import { getLatestProcessedBlock, storeItemPlaced } from './supabase'
+import {
+  getLatestProcessedBlock,
+  storeItemPlaced,
+  storeLastProcessedBlock,
+} from './supabase'
 import { isometricTilemapAbi } from './contracts'
 
 // HTTP client
@@ -158,6 +162,9 @@ const setupPolling = async (): Promise<void> => {
         for (const log of logs) {
           await processContractEvent(log)
         }
+
+        // Store the last processed block
+        await storeLastProcessedBlock(Number(batchEndBlock))
 
         // Update start block for next poll
         startBlock = batchEndBlock + BigInt(1)
