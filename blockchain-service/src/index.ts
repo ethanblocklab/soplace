@@ -3,7 +3,6 @@ import {
   initializeBlockchainConnection,
   closeBlockchainConnection,
 } from './blockchain'
-import { closeQueues } from './queue'
 import { config } from './config'
 
 // Main function
@@ -32,9 +31,6 @@ function setupShutdown() {
     try {
       // Close blockchain connection
       await closeBlockchainConnection()
-
-      // Close queues and workers
-      await closeQueues()
 
       logger.info('Service stopped gracefully')
       process.exit(0)

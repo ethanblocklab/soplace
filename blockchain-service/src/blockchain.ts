@@ -1,6 +1,5 @@
 import {
   createPublicClient,
-  http,
   webSocket,
   type PublicClient,
   type WebSocketTransport,
@@ -13,13 +12,11 @@ import {
 import { somniaTestnet } from 'viem/chains'
 import { config } from './config'
 import { logger } from './logger'
-import { getLatestProcessedBlock } from './supabase'
-import { itemPlacedQueue, itemUpdatedQueue } from './queue'
-import { isometricTilemapAbi, isometricTilemapAddress } from './contracts'
+import { getLatestProcessedBlock, storeItemPlaced } from './supabase'
+import { isometricTilemapAbi } from './contracts'
 
 // Setup WebSocket client
 let wsClient: PublicClient<WebSocketTransport, Chain>
-let httpClient: PublicClient
 let wsTransport: WebSocketTransport
 
 // Contract address typed for viem
@@ -27,15 +24,21 @@ const contractAddress = config.blockchain.contractAddress as Address
 
 // Track connection status
 let isConnected = false
-let reconnectAttempts = 0
-const MAX_RECONNECT_ATTEMPTS = 10
-let watchLogsUnwatch: (() => void) | null = null
+let watchItemPlacedUnwatch: (() => void) | null = null
+let watchItemUpdatedUnwatch: (() => void) | null = null
 
 // Initialize the WebSocket connection and contract
 export const initializeBlockchainConnection = async (): Promise<void> => {
   try {
-    // Create WebSocket transport
-    wsTransport = webSocket(config.blockchain.wssRpcEndpoint)
+    // Create WebSocket transport with built-in reconnection logic
+    wsTransport = webSocket(config.blockchain.wssRpcEndpoint, {
+      reconnect: {
+        attempts: 10, // Max reconnection attempts
+        delay: 2000, // Base delay in ms (uses exponential backoff)
+      },
+      retryCount: 5, // Max retry count for failed requests
+      retryDelay: 150, // Base delay between retries
+    })
 
     // Create WebSocket client
     wsClient = createPublicClient({
@@ -43,37 +46,10 @@ export const initializeBlockchainConnection = async (): Promise<void> => {
       transport: wsTransport,
     })
 
-    // Setup WebSocket connection handlers
-    if ('on' in wsTransport) {
-      const typedTransport = wsTransport as unknown as {
-        on(event: string, listener: any): void
-        destroy?: () => void
-      }
-
-      typedTransport.on('open', () => {
-        logger.info('WebSocket connection established')
-        isConnected = true
-        reconnectAttempts = 0
-      })
-
-      typedTransport.on('close', handleDisconnect)
-
-      typedTransport.on('error', (error: Error) => {
-        logger.error({ error }, 'WebSocket error')
-      })
-    }
-
-    // Create HTTP client as fallback
-    httpClient = createPublicClient({
-      chain: somniaTestnet,
-      transport: http(
-        config.blockchain.wssRpcEndpoint.replace('wss://', 'https://'),
-      ),
-    })
-
-    // Listen for events
+    // Initial setup of event listeners
     await setupEventListeners()
 
+    isConnected = true
     logger.info(
       {
         contractAddress: config.blockchain.contractAddress,
@@ -86,70 +62,57 @@ export const initializeBlockchainConnection = async (): Promise<void> => {
   }
 }
 
-// Handle WebSocket disconnection
-const handleDisconnect = async () => {
-  logger.warn('WebSocket connection closed, attempting to reconnect...')
-  isConnected = false
-
-  // Clean up existing watchers
-  if (watchLogsUnwatch) {
-    watchLogsUnwatch()
-    watchLogsUnwatch = null
+// Clean up event watchers
+const cleanupWatchers = () => {
+  if (watchItemPlacedUnwatch) {
+    watchItemPlacedUnwatch()
+    watchItemPlacedUnwatch = null
   }
 
-  // Reconnect with backoff
-  if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-    const delay = Math.min(1000 * 2 ** reconnectAttempts, 30000)
-    logger.info(
-      `Waiting ${delay}ms before reconnecting (attempt ${
-        reconnectAttempts + 1
-      }/${MAX_RECONNECT_ATTEMPTS})`,
-    )
-
-    setTimeout(() => {
-      reconnectAttempts++
-      initializeBlockchainConnection()
-    }, delay)
-  } else {
-    logger.error('Maximum reconnection attempts reached. Exiting...')
-    process.exit(1)
+  if (watchItemUpdatedUnwatch) {
+    watchItemUpdatedUnwatch()
+    watchItemUpdatedUnwatch = null
   }
+
+  logger.info('Event watchers cleaned up')
 }
 
 // Setup event listeners for the contract
 const setupEventListeners = async (): Promise<void> => {
   try {
-    // Get the last processed block to resume from
+    // Clean up any existing watchers first
+    cleanupWatchers()
+
+    logger.info('Setting up event listeners...')
+
     let startBlock: bigint | 'latest' = 'latest'
 
-    if (config.blockchain.startingBlock === 'latest') {
-      const latestBlock = await wsClient.getBlockNumber()
-      startBlock = latestBlock
+    // Try to get the latest processed block from the database
+    const latestProcessedBlock = await getLatestProcessedBlock()
+
+    if (latestProcessedBlock) {
+      // If we have a processed block, start from the next block
+      startBlock = BigInt(latestProcessedBlock + 1)
       logger.info(
-        { blockNumber: latestBlock.toString() },
-        'Starting from latest block',
-      )
-    } else if (config.blockchain.startingBlock === 'resume') {
-      const lastProcessedBlock = await getLatestProcessedBlock()
-      startBlock = lastProcessedBlock
-        ? BigInt(lastProcessedBlock + 1)
-        : 'latest'
-      logger.info(
-        {
-          blockNumber:
-            typeof startBlock === 'bigint' ? startBlock.toString() : startBlock,
-        },
+        { startBlock: startBlock.toString() },
         'Resuming from last processed block',
       )
     } else if (!isNaN(Number(config.blockchain.startingBlock))) {
       startBlock = BigInt(config.blockchain.startingBlock)
+      logger.info(
+        { startBlock: startBlock.toString() },
+        'Starting from configured block',
+      )
+    } else {
+      logger.info('Starting from latest block')
     }
 
     // Set up log watching for ItemPlaced events
-    watchLogsUnwatch = wsClient.watchContractEvent({
+    watchItemPlacedUnwatch = wsClient.watchContractEvent({
       address: contractAddress,
       abi: isometricTilemapAbi as Abi,
       eventName: 'ItemPlaced',
+      fromBlock: startBlock === 'latest' ? undefined : startBlock,
       onLogs: async (logs) => {
         for (const log of logs) {
           await processItemPlacedEvent(log)
@@ -161,10 +124,11 @@ const setupEventListeners = async (): Promise<void> => {
     })
 
     // Watch for ItemUpdated events
-    wsClient.watchContractEvent({
+    watchItemUpdatedUnwatch = wsClient.watchContractEvent({
       address: contractAddress,
       abi: isometricTilemapAbi as Abi,
       eventName: 'ItemUpdated',
+      fromBlock: startBlock === 'latest' ? undefined : startBlock,
       onLogs: async (logs) => {
         for (const log of logs) {
           await processItemUpdatedEvent(log)
@@ -230,16 +194,26 @@ const processItemPlacedEvent = async (log: Log) => {
       'Received ItemPlaced event',
     )
 
-    // Queue the event for processing
-    await itemPlacedQueue.add('process-item-placed', {
+    // Store the event directly in the database instead of queueing
+    const eventData = {
       player: args.player,
       x: Number(args.x),
       y: Number(args.y),
       itemId: Number(args.itemId),
       blockNumber: Number(log.blockNumber),
       blockTimestamp: new Date(Number(block.timestamp) * 1000),
-      transactionHash: log.transactionHash,
-    })
+      transactionHash: log.transactionHash ?? '',
+    }
+
+    await storeItemPlaced(eventData)
+
+    logger.info(
+      {
+        blockNumber: eventData.blockNumber,
+        tx: eventData.transactionHash,
+      },
+      'Successfully stored ItemPlaced event',
+    )
   } catch (error) {
     logger.error({ error, log }, 'Failed to process ItemPlaced event')
   }
@@ -277,16 +251,26 @@ const processItemUpdatedEvent = async (log: Log) => {
       'Received ItemUpdated event',
     )
 
-    // Queue the event for processing
-    await itemUpdatedQueue.add('process-item-updated', {
+    // For ItemUpdated we can also just use the storeItemPlaced function to update the record
+    const eventData = {
       player: args.player,
       x: Number(args.x),
       y: Number(args.y),
-      newItemId: Number(args.newItemId),
+      itemId: Number(args.newItemId), // Use newItemId as itemId for updates
       blockNumber: Number(log.blockNumber),
       blockTimestamp: new Date(Number(block.timestamp) * 1000),
-      transactionHash: log.transactionHash,
-    })
+      transactionHash: log.transactionHash ?? '',
+    }
+
+    await storeItemPlaced(eventData)
+
+    logger.info(
+      {
+        blockNumber: eventData.blockNumber,
+        tx: eventData.transactionHash,
+      },
+      'Successfully stored ItemUpdated event',
+    )
   } catch (error) {
     logger.error({ error, log }, 'Failed to process ItemUpdated event')
   }
@@ -294,16 +278,10 @@ const processItemUpdatedEvent = async (log: Log) => {
 
 // Close the WebSocket connection
 export const closeBlockchainConnection = async (): Promise<void> => {
-  if (watchLogsUnwatch) {
-    watchLogsUnwatch()
-  }
+  cleanupWatchers()
 
-  if (wsTransport && isConnected) {
+  if (isConnected) {
     logger.info('Closing blockchain connection...')
-    if ('destroy' in wsTransport) {
-      // Use destroy method if available
-      ;(wsTransport as unknown as { destroy: () => void }).destroy()
-    }
     isConnected = false
   }
 }

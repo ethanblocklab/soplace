@@ -20,12 +20,6 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      - key: REDIS_HOST
-        sync: false
-      - key: REDIS_PORT
-        sync: false
-      - key: REDIS_PASSWORD
-        sync: false
       - key: POLL_INTERVAL
         value: 15000
       - key: MAX_BLOCKS_PER_BATCH
