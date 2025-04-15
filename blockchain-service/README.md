@@ -13,7 +13,9 @@ A service that monitors IsometricTilemap smart contract events and stores them i
 ## Prerequisites
 
 - Node.js 18 or higher
+  - Render
 - Redis server (for BullMQ)
+  - upstash
 - Supabase account with required tables set up
 
 ## Setup
@@ -45,41 +47,9 @@ Create the following tables in your Supabase database:
 ### item_placed_events
 
 ```sql
-CREATE TABLE item_placed_events (
-  id SERIAL PRIMARY KEY,
-  player TEXT NOT NULL,
-  x INTEGER NOT NULL,
-  y INTEGER NOT NULL,
-  item_id INTEGER NOT NULL,
-  block_number INTEGER NOT NULL,
-  block_timestamp TIMESTAMP NOT NULL,
-  transaction_hash TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+CREATE TABLE item_placed (
+
 );
-
-CREATE INDEX idx_item_placed_block_number ON item_placed_events(block_number);
-CREATE INDEX idx_item_placed_player ON item_placed_events(player);
-CREATE INDEX idx_item_placed_coordinates ON item_placed_events(x, y);
-```
-
-### item_updated_events
-
-```sql
-CREATE TABLE item_updated_events (
-  id SERIAL PRIMARY KEY,
-  player TEXT NOT NULL,
-  x INTEGER NOT NULL,
-  y INTEGER NOT NULL,
-  new_item_id INTEGER NOT NULL,
-  block_number INTEGER NOT NULL,
-  block_timestamp TIMESTAMP NOT NULL,
-  transaction_hash TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX idx_item_updated_block_number ON item_updated_events(block_number);
-CREATE INDEX idx_item_updated_player ON item_updated_events(player);
-CREATE INDEX idx_item_updated_coordinates ON item_updated_events(x, y);
 ```
 
 ## Running the Service
