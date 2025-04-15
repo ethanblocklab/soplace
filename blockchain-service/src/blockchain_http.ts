@@ -28,6 +28,8 @@ const contractAddress = config.blockchain.contractAddress as Address
 
 // Poll interval ID
 let pollIntervalId: NodeJS.Timeout | null = null
+// Flag to track if a polling task is in progress
+let isPolling = false
 
 // Initialize the HTTP connection
 export const initializeHttpBlockchainConnection = async (): Promise<void> => {
@@ -61,9 +63,10 @@ export const initializeHttpBlockchainConnection = async (): Promise<void> => {
 // Clean up polling
 const cleanupPolling = () => {
   if (pollIntervalId) {
-    clearInterval(pollIntervalId)
+    clearTimeout(pollIntervalId)
     pollIntervalId = null
   }
+  isPolling = false
 
   logger.info('HTTP polling stopped')
 }
@@ -124,8 +127,13 @@ const setupPolling = async (): Promise<void> => {
       )
     }
 
-    // Set up polling interval
-    pollIntervalId = setInterval(async () => {
+    // Define the polling function that will be called recursively
+    const pollForEvents = async () => {
+      // If already polling, just return
+      if (isPolling) return
+
+      isPolling = true
+
       try {
         // Get the latest block
         const latestBlock = await httpClient.getBlockNumber()
@@ -133,6 +141,12 @@ const setupPolling = async (): Promise<void> => {
 
         // Skip if there are no new blocks
         if (endBlock < startBlock) {
+          // Schedule next poll and return
+          isPolling = false
+          pollIntervalId = setTimeout(
+            pollForEvents,
+            config.blockchain.pollInterval,
+          )
           return
         }
 
@@ -170,8 +184,20 @@ const setupPolling = async (): Promise<void> => {
         startBlock = batchEndBlock + BigInt(1)
       } catch (error) {
         logger.error({ error }, 'Error while polling for events')
+      } finally {
+        // Mark polling as finished
+        isPolling = false
+
+        // Schedule next poll
+        pollIntervalId = setTimeout(
+          pollForEvents,
+          config.blockchain.pollInterval,
+        )
       }
-    }, config.blockchain.pollInterval)
+    }
+
+    // Start the first poll
+    pollForEvents()
 
     logger.info('HTTP polling set up successfully')
   } catch (error) {

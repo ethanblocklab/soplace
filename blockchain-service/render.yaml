@@ -2,7 +2,7 @@ services:
   - type: worker
     name: blockchain-event-monitor
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install -g pnpm && pnpm install && pnpm run build
     startCommand: node dist/index.js
     plan: starter
     # Use Render auto-scaling to handle spikes
