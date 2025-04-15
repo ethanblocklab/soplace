@@ -6,13 +6,15 @@ import {
     PhaserGame,
 } from "@/components/game/phaser/PhaserGame";
 import { useItemsPlaced } from "@/hooks/useItemsPlaced";
+import { useItemsPlacedSupabase } from "@/hooks/useItemsPlacedSupabase";
 import { EventBus } from "./phaser/EventBus";
 
 export function GameApp() {
     //  References to the PhaserGame component (game and scene are exposed)
     const gameRef = useRef<IRefPhaserGame>(null);
     const [isSceneReady, setIsSceneReady] = useState(false);
-    const { data: itemsData, isLoading, error } = useItemsPlaced();
+    // const { data: itemsData, isLoading, error } = useItemsPlaced();
+    const { data: itemsData, isLoading, error } = useItemsPlacedSupabase();
 
     // Listen for scene ready event
     useEffect(() => {
