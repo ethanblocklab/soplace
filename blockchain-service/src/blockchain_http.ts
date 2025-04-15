@@ -1,13 +1,14 @@
 import {
   createPublicClient,
-  webSocket,
+  http,
   type PublicClient,
-  type WebSocketTransport,
+  type HttpTransport,
   type Log,
   decodeEventLog,
   type Chain,
   type Abi,
   type Address,
+  getContract,
 } from 'viem'
 import { somniaTestnet } from 'viem/chains'
 import { config } from './config'
@@ -15,115 +16,52 @@ import { logger } from './logger'
 import { getLatestProcessedBlock, storeItemPlaced } from './supabase'
 import { isometricTilemapAbi } from './contracts'
 
-// Setup WebSocket client
-let wsClient: PublicClient<WebSocketTransport, Chain>
-let wsTransport: WebSocketTransport
+// HTTP client
+let httpClient: PublicClient<HttpTransport, Chain>
 
 // Contract address typed for viem
 const contractAddress = config.blockchain.contractAddress as Address
 
-// Track connection status
-let isConnected = false
-let watchContractLogsUnwatch: (() => void) | null = null
+// Poll interval ID
+let pollIntervalId: NodeJS.Timeout | null = null
 
-// Event type constants
-const EVENT_TYPE_PLACED = 'placed' as const
-const EVENT_TYPE_UPDATED = 'updated' as const
-
-// Initialize the WebSocket connection and contract
-export const initializeBlockchainConnection = async (): Promise<void> => {
+// Initialize the HTTP connection
+export const initializeHttpBlockchainConnection = async (): Promise<void> => {
   try {
-    // Create WebSocket transport with built-in reconnection logic
-    wsTransport = webSocket(config.blockchain.wssRpcEndpoint, {
-      reconnect: {
-        attempts: 10, // Max reconnection attempts
-        delay: 2000, // Base delay in ms (uses exponential backoff)
-      },
-      retryCount: 5, // Max retry count for failed requests
-      retryDelay: 150, // Base delay between retries
-    })
+    // Extract HTTP URL from WSS URL or use a provided HTTP URL
+    const httpRpcEndpoint = config.blockchain.httpRpcEndpoint
 
-    // Create WebSocket client
-    wsClient = createPublicClient({
+    // Create HTTP client
+    httpClient = createPublicClient({
       chain: somniaTestnet,
-      transport: wsTransport,
+      transport: http(httpRpcEndpoint),
     })
 
-    // Initial setup of event listeners
-    await setupEventListeners()
+    // Initial setup of polling
+    await setupPolling()
 
-    isConnected = true
     logger.info(
       {
         contractAddress: config.blockchain.contractAddress,
+        transport: 'HTTP',
+        endpoint: httpRpcEndpoint,
       },
-      'Blockchain connection initialized',
+      'HTTP blockchain connection initialized',
     )
   } catch (error) {
-    logger.error({ error }, 'Failed to initialize blockchain connection')
+    logger.error({ error }, 'Failed to initialize HTTP blockchain connection')
     throw error
   }
 }
 
-// Clean up event watchers
-const cleanupWatchers = () => {
-  if (watchContractLogsUnwatch) {
-    watchContractLogsUnwatch()
-    watchContractLogsUnwatch = null
+// Clean up polling
+const cleanupPolling = () => {
+  if (pollIntervalId) {
+    clearInterval(pollIntervalId)
+    pollIntervalId = null
   }
 
-  logger.info('Event watchers cleaned up')
-}
-
-// Setup event listeners for the contract
-const setupEventListeners = async (): Promise<void> => {
-  try {
-    // Clean up any existing watchers first
-    cleanupWatchers()
-
-    logger.info('Setting up event listeners...')
-
-    let startBlock: bigint | 'latest' = 'latest'
-
-    // Try to get the latest processed block from the database
-    const latestProcessedBlock = await getLatestProcessedBlock()
-
-    if (latestProcessedBlock) {
-      // If we have a processed block, start from the next block
-      startBlock = BigInt(latestProcessedBlock + 1)
-      logger.info(
-        { startBlock: startBlock.toString() },
-        'Resuming from last processed block',
-      )
-    } else if (!isNaN(Number(config.blockchain.startingBlock))) {
-      startBlock = BigInt(config.blockchain.startingBlock)
-      logger.info(
-        { startBlock: startBlock.toString() },
-        'Starting from configured block',
-      )
-    } else {
-      logger.info({ startBlock: 'latest' }, 'Starting from latest block')
-    }
-
-    watchContractLogsUnwatch = wsClient.watchContractEvent({
-      address: contractAddress,
-      abi: isometricTilemapAbi as Abi,
-      fromBlock: startBlock === 'latest' ? undefined : startBlock,
-      onLogs: async (logs) => {
-        for (const log of logs) {
-          await processContractEvent(log)
-        }
-      },
-      onError: (error) => {
-        logger.error({ error }, 'Error while watching contract events')
-      },
-    })
-
-    logger.info('Event listeners set up successfully')
-  } catch (error) {
-    logger.error({ error }, 'Failed to set up event listeners')
-    throw error
-  }
+  logger.info('HTTP polling stopped')
 }
 
 // Define types for ItemPlaced event args
@@ -142,16 +80,107 @@ interface ItemUpdatedEventArgs {
   newItemId: bigint
 }
 
+// Setup polling for contract events
+const setupPolling = async (): Promise<void> => {
+  try {
+    // Clean up any existing polling
+    cleanupPolling()
+
+    logger.info('Setting up HTTP polling...')
+
+    let startBlock: bigint
+    let endBlock: bigint
+
+    // Try to get the latest processed block from the database
+    const latestProcessedBlock = await getLatestProcessedBlock()
+
+    if (latestProcessedBlock) {
+      // If we have a processed block, start from the next block
+      startBlock = BigInt(latestProcessedBlock + 1)
+      logger.info(
+        { startBlock: startBlock.toString() },
+        'Resuming from last processed block',
+      )
+    } else if (
+      !isNaN(Number(config.blockchain.startingBlock)) &&
+      config.blockchain.startingBlock !== 'latest'
+    ) {
+      startBlock = BigInt(config.blockchain.startingBlock)
+      logger.info(
+        { startBlock: startBlock.toString() },
+        'Starting from configured block',
+      )
+    } else {
+      // If no starting block is specified, get the latest block
+      const latestBlock = await httpClient.getBlockNumber()
+      startBlock = latestBlock
+      logger.info(
+        { startBlock: startBlock.toString() },
+        'Starting from latest block',
+      )
+    }
+
+    // Set up polling interval
+    pollIntervalId = setInterval(async () => {
+      try {
+        // Get the latest block
+        const latestBlock = await httpClient.getBlockNumber()
+        endBlock = latestBlock
+
+        // Skip if there are no new blocks
+        if (endBlock < startBlock) {
+          return
+        }
+
+        // Limit the number of blocks processed in each batch
+        const maxBlocksPerBatch = BigInt(config.blockchain.maxBlocksPerBatch)
+        const batchEndBlock =
+          endBlock - startBlock > maxBlocksPerBatch
+            ? startBlock + maxBlocksPerBatch
+            : endBlock
+
+        logger.info(
+          {
+            startBlock: startBlock.toString(),
+            endBlock: batchEndBlock.toString(),
+          },
+          'Polling for events',
+        )
+
+        // Get logs for the batch
+        const logs = await httpClient.getLogs({
+          address: contractAddress,
+          fromBlock: startBlock,
+          toBlock: batchEndBlock,
+        })
+
+        // Process logs
+        for (const log of logs) {
+          await processContractEvent(log)
+        }
+
+        // Update start block for next poll
+        startBlock = batchEndBlock + BigInt(1)
+      } catch (error) {
+        logger.error({ error }, 'Error while polling for events')
+      }
+    }, config.blockchain.pollInterval)
+
+    logger.info('HTTP polling set up successfully')
+  } catch (error) {
+    logger.error({ error }, 'Failed to set up HTTP polling')
+    throw error
+  }
+}
+
 // Process contract events
 const processContractEvent = async (log: Log) => {
-  logger.info({ log }, 'Processing contract event')
   try {
-    const block = await wsClient.getBlock({
+    const block = await httpClient.getBlock({
       blockHash: log.blockHash as `0x${string}`,
     })
 
-    logger.info({ block }, 'Processing contract event')
-
+    // First try to decode as ItemPlaced event
     try {
       const placedResult = decodeEventLog({
         abi: isometricTilemapAbi as Abi,
@@ -183,7 +212,6 @@ const processContractEvent = async (log: Log) => {
         blockNumber: Number(log.blockNumber),
         blockTimestamp: new Date(Number(block.timestamp) * 1000),
         transactionHash: log.transactionHash ?? '',
-        eventType: EVENT_TYPE_PLACED,
       }
 
       await storeItemPlaced(eventData)
@@ -198,8 +226,11 @@ const processContractEvent = async (log: Log) => {
       )
 
       return
-    } catch (placedError) {}
+    } catch (placedError) {
+      // Not an ItemPlaced event, try ItemUpdated
+    }
 
+    // Then try to decode as ItemUpdated event
     try {
       const updatedResult = decodeEventLog({
         abi: isometricTilemapAbi as Abi,
@@ -231,7 +262,6 @@ const processContractEvent = async (log: Log) => {
         blockNumber: Number(log.blockNumber),
         blockTimestamp: new Date(Number(block.timestamp) * 1000),
         transactionHash: log.transactionHash ?? '',
-        eventType: EVENT_TYPE_UPDATED,
       }
 
       await storeItemPlaced(eventData)
@@ -246,18 +276,31 @@ const processContractEvent = async (log: Log) => {
       )
 
       return
-    } catch (updatedError) {}
+    } catch (updatedError) {
+      // Not an ItemUpdated event either, log for debugging
+      logger.debug(
+        {
+          topics: log.topics,
+          data: log.data,
+          blockNumber: log.blockNumber,
+        },
+        'Received unrecognized event',
+      )
+    }
   } catch (error) {
     logger.error({ error, log }, 'Failed to process contract event')
   }
 }
 
-// Close the WebSocket connection
-export const closeBlockchainConnection = async (): Promise<void> => {
-  cleanupWatchers()
+// Clean up HTTP connection
+export const closeHttpBlockchainConnection = async (): Promise<void> => {
+  try {
+    // Clean up polling
+    cleanupPolling()
 
-  if (isConnected) {
-    logger.info('Closing blockchain connection...')
-    isConnected = false
+    logger.info('HTTP blockchain connection closed')
+  } catch (error) {
+    logger.error({ error }, 'Error closing HTTP blockchain connection')
+    throw error
   }
 }

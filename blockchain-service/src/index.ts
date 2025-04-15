@@ -3,6 +3,10 @@ import {
   initializeBlockchainConnection,
   closeBlockchainConnection,
 } from './blockchain'
+import {
+  initializeHttpBlockchainConnection,
+  closeHttpBlockchainConnection,
+} from './blockchain_http'
 import { config } from './config'
 
 // Main function
@@ -11,7 +15,14 @@ async function main() {
 
   try {
     // Initialize blockchain connection and event listeners
-    await initializeBlockchainConnection()
+    // Choose between WebSocket and HTTP implementation
+    if (config.blockchain.httpRpcEndpoint) {
+      logger.info('Using HTTP connection for blockchain monitoring')
+      await initializeHttpBlockchainConnection()
+    } else {
+      logger.info('Using WebSocket connection for blockchain monitoring')
+      await initializeBlockchainConnection()
+    }
 
     logger.info('Service started successfully')
 
@@ -29,8 +40,12 @@ function setupShutdown() {
     logger.info('Shutting down...')
 
     try {
-      // Close blockchain connection
-      await closeBlockchainConnection()
+      // Close blockchain connection based on which one was used
+      if (config.blockchain.httpRpcEndpoint) {
+        await closeHttpBlockchainConnection()
+      } else {
+        await closeBlockchainConnection()
+      }
 
       logger.info('Service stopped gracefully')
       process.exit(0)
