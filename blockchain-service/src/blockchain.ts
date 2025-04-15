@@ -24,8 +24,11 @@ const contractAddress = config.blockchain.contractAddress as Address
 
 // Track connection status
 let isConnected = false
-let watchItemPlacedUnwatch: (() => void) | null = null
-let watchItemUpdatedUnwatch: (() => void) | null = null
+let watchContractLogsUnwatch: (() => void) | null = null
+
+// Event type constants
+const EVENT_TYPE_PLACED = 'placed' as const
+const EVENT_TYPE_UPDATED = 'updated' as const
 
 // Initialize the WebSocket connection and contract
 export const initializeBlockchainConnection = async (): Promise<void> => {
@@ -64,14 +67,9 @@ export const initializeBlockchainConnection = async (): Promise<void> => {
 
 // Clean up event watchers
 const cleanupWatchers = () => {
-  if (watchItemPlacedUnwatch) {
-    watchItemPlacedUnwatch()
-    watchItemPlacedUnwatch = null
-  }
-
-  if (watchItemUpdatedUnwatch) {
-    watchItemUpdatedUnwatch()
-    watchItemUpdatedUnwatch = null
+  if (watchContractLogsUnwatch) {
+    watchContractLogsUnwatch()
+    watchContractLogsUnwatch = null
   }
 
   logger.info('Event watchers cleaned up')
@@ -107,35 +105,17 @@ const setupEventListeners = async (): Promise<void> => {
       logger.info('Starting from latest block')
     }
 
-    // Set up log watching for ItemPlaced events
-    watchItemPlacedUnwatch = wsClient.watchContractEvent({
+    watchContractLogsUnwatch = wsClient.watchContractEvent({
       address: contractAddress,
       abi: isometricTilemapAbi as Abi,
-      eventName: 'ItemPlaced',
       fromBlock: startBlock === 'latest' ? undefined : startBlock,
       onLogs: async (logs) => {
         for (const log of logs) {
-          await processItemPlacedEvent(log)
+          await processContractEvent(log)
         }
       },
       onError: (error) => {
-        logger.error({ error }, 'Error while watching ItemPlaced events')
-      },
-    })
-
-    // Watch for ItemUpdated events
-    watchItemUpdatedUnwatch = wsClient.watchContractEvent({
-      address: contractAddress,
-      abi: isometricTilemapAbi as Abi,
-      eventName: 'ItemUpdated',
-      fromBlock: startBlock === 'latest' ? undefined : startBlock,
-      onLogs: async (logs) => {
-        for (const log of logs) {
-          await processItemUpdatedEvent(log)
-        }
-      },
-      onError: (error) => {
-        logger.error({ error }, 'Error while watching ItemUpdated events')
+        logger.error({ error }, 'Error while watching contract events')
       },
     })
 
@@ -162,117 +142,110 @@ interface ItemUpdatedEventArgs {
   newItemId: bigint
 }
 
-// Process ItemPlaced events
-const processItemPlacedEvent = async (log: Log) => {
+// Process contract events
+const processContractEvent = async (log: Log) => {
   try {
-    // Get the block for timestamp
     const block = await wsClient.getBlock({
       blockHash: log.blockHash as `0x${string}`,
     })
 
-    // Parse the event data
-    const result = decodeEventLog({
-      abi: isometricTilemapAbi as Abi,
-      eventName: 'ItemPlaced',
-      topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
-      data: log.data,
-    })
+    try {
+      const placedResult = decodeEventLog({
+        abi: isometricTilemapAbi as Abi,
+        eventName: 'ItemPlaced',
+        topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+        data: log.data,
+      })
 
-    // Cast args to the correct type
-    const args = result.args as unknown as ItemPlacedEventArgs
+      const args = placedResult.args as unknown as ItemPlacedEventArgs
 
-    logger.info(
-      {
-        event: 'ItemPlaced',
+      logger.info(
+        {
+          event: 'ItemPlaced',
+          player: args.player,
+          x: args.x.toString(),
+          y: args.y.toString(),
+          itemId: args.itemId.toString(),
+          blockNumber: log.blockNumber,
+          transactionHash: log.transactionHash,
+        },
+        'Received ItemPlaced event',
+      )
+
+      const eventData = {
         player: args.player,
-        x: args.x.toString(),
-        y: args.y.toString(),
-        itemId: args.itemId.toString(),
-        blockNumber: log.blockNumber,
-        transactionHash: log.transactionHash,
-      },
-      'Received ItemPlaced event',
-    )
+        x: Number(args.x),
+        y: Number(args.y),
+        itemId: Number(args.itemId),
+        blockNumber: Number(log.blockNumber),
+        blockTimestamp: new Date(Number(block.timestamp) * 1000),
+        transactionHash: log.transactionHash ?? '',
+        eventType: EVENT_TYPE_PLACED,
+      }
 
-    // Store the event directly in the database instead of queueing
-    const eventData = {
-      player: args.player,
-      x: Number(args.x),
-      y: Number(args.y),
-      itemId: Number(args.itemId),
-      blockNumber: Number(log.blockNumber),
-      blockTimestamp: new Date(Number(block.timestamp) * 1000),
-      transactionHash: log.transactionHash ?? '',
-    }
+      await storeItemPlaced(eventData)
 
-    await storeItemPlaced(eventData)
+      logger.info(
+        {
+          event: 'ItemPlaced',
+          blockNumber: eventData.blockNumber,
+          tx: eventData.transactionHash,
+        },
+        'Successfully stored ItemPlaced event',
+      )
 
-    logger.info(
-      {
-        blockNumber: eventData.blockNumber,
-        tx: eventData.transactionHash,
-      },
-      'Successfully stored ItemPlaced event',
-    )
-  } catch (error) {
-    logger.error({ error, log }, 'Failed to process ItemPlaced event')
-  }
-}
+      return
+    } catch (placedError) {}
 
-// Process ItemUpdated events
-const processItemUpdatedEvent = async (log: Log) => {
-  try {
-    // Get the block for timestamp
-    const block = await wsClient.getBlock({
-      blockHash: log.blockHash as `0x${string}`,
-    })
+    try {
+      const updatedResult = decodeEventLog({
+        abi: isometricTilemapAbi as Abi,
+        eventName: 'ItemUpdated',
+        topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+        data: log.data,
+      })
 
-    // Parse the event data
-    const result = decodeEventLog({
-      abi: isometricTilemapAbi as Abi,
-      eventName: 'ItemUpdated',
-      topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
-      data: log.data,
-    })
+      const args = updatedResult.args as unknown as ItemUpdatedEventArgs
 
-    // Cast args to the correct type
-    const args = result.args as unknown as ItemUpdatedEventArgs
+      logger.info(
+        {
+          event: 'ItemUpdated',
+          player: args.player,
+          x: args.x.toString(),
+          y: args.y.toString(),
+          newItemId: args.newItemId.toString(),
+          blockNumber: log.blockNumber,
+          transactionHash: log.transactionHash,
+        },
+        'Received ItemUpdated event',
+      )
 
-    logger.info(
-      {
-        event: 'ItemUpdated',
+      const eventData = {
         player: args.player,
-        x: args.x.toString(),
-        y: args.y.toString(),
-        newItemId: args.newItemId.toString(),
-        blockNumber: log.blockNumber,
-        transactionHash: log.transactionHash,
-      },
-      'Received ItemUpdated event',
-    )
+        x: Number(args.x),
+        y: Number(args.y),
+        itemId: Number(args.newItemId), // Use newItemId as itemId for updates
+        blockNumber: Number(log.blockNumber),
+        blockTimestamp: new Date(Number(block.timestamp) * 1000),
+        transactionHash: log.transactionHash ?? '',
+        eventType: EVENT_TYPE_UPDATED,
+      }
 
-    // For ItemUpdated we can also just use the storeItemPlaced function to update the record
-    const eventData = {
-      player: args.player,
-      x: Number(args.x),
-      y: Number(args.y),
-      itemId: Number(args.newItemId), // Use newItemId as itemId for updates
-      blockNumber: Number(log.blockNumber),
-      blockTimestamp: new Date(Number(block.timestamp) * 1000),
-      transactionHash: log.transactionHash ?? '',
-    }
+      await storeItemPlaced(eventData)
 
-    await storeItemPlaced(eventData)
+      logger.info(
+        {
+          event: 'ItemUpdated',
+          blockNumber: eventData.blockNumber,
+          tx: eventData.transactionHash,
+        },
+        'Successfully stored ItemUpdated event',
+      )
 
-    logger.info(
-      {
-        blockNumber: eventData.blockNumber,
-        tx: eventData.transactionHash,
-      },
-      'Successfully stored ItemUpdated event',
-    )
+      return
+    } catch (updatedError) {}
   } catch (error) {
-    logger.error({ error, log }, 'Failed to process ItemUpdated event')
+    logger.error({ error, log }, 'Failed to process contract event')
   }
 }
 
