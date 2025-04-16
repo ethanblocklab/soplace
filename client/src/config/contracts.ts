@@ -1,6 +1,6 @@
 // Replace with the proxy address after deployment to Somnia testnet
 export const isometricTilemapAddress =
-    "0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4"; // Update after deployment
+    "0x89e325D556d760a38bDA9f15De5359a6B17C75Ad"; // Update after deployment
 
 // Isometric Tilemap Contract ABI
 export const isometricTilemapAbi = [

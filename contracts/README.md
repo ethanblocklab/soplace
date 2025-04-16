@@ -94,6 +94,10 @@ To check what's on a tile:
 Implementation deployed at: 0x12B1247B11c02CC8Dce4f984f7A7fE7Cef9b7E67
 Proxy deployed at: 0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4
 
+== Logs ==
+Implementation deployed at: 0x81114ba183ac4E916d14fD4dAD90224210F2b302
+Proxy deployed at: 0x89e325D556d760a38bDA9f15De5359a6B17C75Ad
+
 ## License
 
 This project is licensed under the MIT License.
