@@ -27,6 +27,7 @@ export class Game extends Scene {
     private cameraStartX: number = 0;
     private cameraStartY: number = 0;
     private placedItems: PlacedItem[] = [];
+    private selectedFrameIndex: number | null = null;
 
     constructor() {
         super("Game");
@@ -129,7 +130,10 @@ export class Game extends Scene {
             }
         });
 
-        this.createItemPanel();
+        // Listen for item selections from the React component
+        EventBus.on("item-selected", (frameIndex: number) => {
+            this.handleItemSelected(frameIndex);
+        });
 
         const cursors = this.input.keyboard!.createCursorKeys();
 
@@ -158,55 +162,6 @@ export class Game extends Scene {
         );
 
         EventBus.emit("current-scene-ready", this);
-    }
-
-    createItemPanel() {
-        const panelX = 32;
-        // const panelY = 0;
-        const tileSize = 64;
-        const padding = 10;
-        const columns = 4;
-        const containerHeight = 400; // Fixed height for the container
-
-        // Create a background rectangle for the panel
-        const background = this.add.rectangle(
-            (columns * (tileSize + padding) + padding) / 2,
-            containerHeight / 2,
-            columns * (tileSize + padding) + padding,
-            containerHeight,
-            0x000000,
-            0.5
-        );
-        background.setScrollFactor(0);
-
-        const itemTiles = getAllItemTileFrames();
-        for (let i = 0; i < itemTiles.length; i++) {
-            const row = Math.floor(i / columns);
-            const col = i % columns;
-            const x = padding + col * (tileSize + padding);
-            const y = padding + 50 + row * (tileSize + padding);
-
-            const tile = this.add
-                .sprite(panelX + x, y, "tiles", itemTiles[i])
-                .setInteractive()
-                .setData("frameIndex", itemTiles[i]);
-
-            tile.setScrollFactor(0);
-
-            // Add hover effect
-            tile.on("pointerover", () => {
-                tile.setTint(0x66ff66);
-                tile.setScale(1.1);
-            });
-
-            tile.on("pointerout", () => {
-                tile.clearTint();
-                tile.setScale(1);
-            });
-
-            this.input.setDraggable(tile);
-            this.itemTiles.push(tile);
-        }
     }
 
     onDragStart(
@@ -345,6 +300,46 @@ export class Game extends Scene {
 
     update(time: number, delta: number) {
         this.controls.update(delta);
+
+        // Update preview sprite position if it exists
+        if (this.previewSprite && this.selectedFrameIndex !== null) {
+            const pointer = this.input.activePointer;
+            const worldPoint = this.cameras.main.getWorldPoint(
+                pointer.x,
+                pointer.y
+            );
+            const pointerXY = this.map.worldToTileXY(
+                worldPoint.x,
+                worldPoint.y
+            );
+
+            if (pointerXY) {
+                const tileX = pointerXY.x;
+                const tileY = pointerXY.y;
+
+                // Make preview visible when over the map
+                this.previewSprite.visible = true;
+
+                if (this.canPlaceItem(tileX, tileY)) {
+                    this.previewSprite.setAlpha(0.5);
+                    this.previewSprite.setTint(0x00ff00);
+                } else {
+                    this.previewSprite.setAlpha(0.3);
+                    this.previewSprite.setTint(0xff0000);
+                }
+
+                const worldXY = this.map.tileToWorldXY(tileX, tileY);
+                if (worldXY) {
+                    this.previewSprite.setPosition(
+                        worldXY.x + 32,
+                        worldXY.y + 32
+                    );
+                }
+            } else {
+                // Hide preview when outside the map area
+                this.previewSprite.visible = false;
+            }
+        }
     }
 
     // Initialize placed items from GraphQL data
@@ -489,6 +484,60 @@ export class Game extends Scene {
                 decoration.setRotation(Math.random() * 0.3 - 0.15);
                 break;
         }
+    }
+
+    // Add new method to handle item selection from the React component
+    handleItemSelected(frameIndex: number) {
+        this.selectedFrameIndex = frameIndex;
+
+        // Create a preview sprite when an item is selected
+        if (this.previewSprite) {
+            this.previewSprite.destroy();
+        }
+
+        this.previewSprite = this.add.sprite(0, 0, "tiles", frameIndex);
+        this.previewSprite.setAlpha(0.5);
+        this.previewSprite.setTint(0x00ff00);
+
+        // Hide the preview initially until mouse moves over valid position
+        this.previewSprite.visible = false;
+
+        // Enable placing items by clicking on map
+        this.input.on("pointerdown", this.handleMapClick, this);
+    }
+
+    handleMapClick(pointer: Phaser.Input.Pointer) {
+        // Only handle clicks if we have a selected item
+        if (!this.selectedFrameIndex || this.isDragging) return;
+
+        const worldPoint = this.cameras.main.getWorldPoint(
+            pointer.x,
+            pointer.y
+        );
+        const pointerXY = this.map.worldToTileXY(worldPoint.x, worldPoint.y);
+        if (!pointerXY) return;
+
+        const tileX = Math.floor(pointerXY.x);
+        const tileY = Math.floor(pointerXY.y);
+
+        if (this.canPlaceItem(tileX, tileY)) {
+            this.placeItem(tileX, tileY, this.selectedFrameIndex);
+        }
+    }
+
+    // Add this method for cleanup
+    shutdown() {
+        // Clean up all event listeners to prevent memory leaks
+        EventBus.removeAllListeners("item-selected");
+
+        // Clean up other resources
+        if (this.previewSprite) {
+            this.previewSprite.destroy();
+            this.previewSprite = null;
+        }
+
+        this.itemTiles.forEach((tile) => tile.destroy());
+        this.itemTiles = [];
     }
 }
 

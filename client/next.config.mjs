@@ -4,6 +4,10 @@ const nextConfig = {
     distDir: "dist",
     // Enable App Router
     appDir: true,
+    // Disable image optimization for static export
+    images: {
+        unoptimized: true,
+    },
 };
 
 export default nextConfig;

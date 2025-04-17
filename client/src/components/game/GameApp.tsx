@@ -8,6 +8,7 @@ import {
 import { useItemsPlaced } from "@/hooks/useItemsPlaced";
 import { useItemsPlacedSupabase } from "@/hooks/useItemsPlacedSupabase";
 import { EventBus } from "./phaser/EventBus";
+import { ItemPanel } from "./ItemPanel";
 
 export function GameApp() {
     //  References to the PhaserGame component (game and scene are exposed)
@@ -43,8 +44,9 @@ export function GameApp() {
     }, [itemsData, isSceneReady]);
 
     return (
-        <div className="w-full h-full">
+        <div className="w-full h-full relative">
             <PhaserGame ref={gameRef} />
+            {isSceneReady && <ItemPanel />}
         </div>
     );
 }
