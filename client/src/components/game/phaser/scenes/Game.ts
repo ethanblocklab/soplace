@@ -27,6 +27,9 @@ export class Game extends Scene {
     private cameraStartY: number = 0;
     private placedItems: PlacedItem[] = [];
     private selectedFrameIndex: number | null = null;
+    private minZoom: number = 0.4;
+    private maxZoom: number = 2;
+    private zoomFactor: number = 0.1;
 
     constructor() {
         super("Game");
@@ -44,7 +47,7 @@ export class Game extends Scene {
             EventBus.emit("loading-progress", 1);
         });
 
-        this.load.tilemapTiledJSON("map", "tiles/map2.json");
+        this.load.tilemapTiledJSON("map", "tiles/soplace-map.json");
         this.load.spritesheet("tiles", "tiles/outside.png", {
             frameWidth: 64,
         });
@@ -63,17 +66,17 @@ export class Game extends Scene {
     }
 
     create() {
-        const forestBackground = this.add
-            .rectangle(
-                0,
-                0,
-                this.cameras.main.width * 2,
-                this.cameras.main.height * 2,
-                0x0a3410
-            )
-            .setOrigin(0.5)
-            .setScrollFactor(0)
-            .setDepth(-2);
+        // const forestBackground = this.add
+        //     .rectangle(
+        //         0,
+        //         0,
+        //         this.cameras.main.width * 2,
+        //         this.cameras.main.height * 2,
+        //         0x0a3410
+        //     )
+        //     .setOrigin(0.5)
+        //     .setScrollFactor(0)
+        //     .setDepth(-2);
 
         // Create the map
         this.map = this.add.tilemap("map");
@@ -82,19 +85,53 @@ export class Game extends Scene {
         const tileset = this.map.addTilesetImage("outside", "tiles");
         if (!tileset) throw new Error("Failed to load tileset");
 
+        const decorTileset = this.map.addTilesetImage("decor", "decorations");
+        if (!decorTileset) throw new Error("Failed to load decor tileset");
+
         // Create the layers
         const layer = this.map.createLayer("Tile Layer 1", tileset);
         if (!layer) throw new Error("Failed to create ground layer");
         this.groundLayer = layer;
 
+        // With this implementation
+        const decorObjects = this.map.createFromObjects("decoration", [
+            {
+                gid: 161,
+            },
+            {
+                gid: 162,
+            },
+            {
+                gid: 163,
+            },
+            {
+                gid: 164,
+            },
+        ]);
+
+        // Adjust sprites after creation
+        decorObjects.forEach((obj) => {
+            // Set the proper frame if needed (subtracting firstgid)
+            if (obj instanceof Phaser.GameObjects.Sprite) {
+                obj.setOrigin(1, 0.5);
+                obj.setX(obj.x + 32);
+                obj.setY(obj.y + 32);
+            }
+        });
+
         // Set camera bounds with layer offset
         const mapWidth = this.map.widthInPixels;
         const mapHeight = this.map.heightInPixels;
 
-        this.cameras.main.setBounds(-mapWidth / 2, 0, mapWidth, mapHeight);
+        this.cameras.main.setBounds(
+            -mapWidth / 2,
+            0,
+            mapWidth + 64,
+            mapHeight + 64
+        );
+        this.cameras.main.setZoom(1); // Set default zoom level
 
-        // Add decorations to fill the empty corners
-        this.fillEmptyCorners();
+        this.cameras.main.centerOn(0, 0);
 
         // Add mouse drag functionality
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -132,6 +169,32 @@ export class Game extends Scene {
         EventBus.on("item-selected", (frameIndex: number) => {
             this.handleItemSelected(frameIndex);
         });
+
+        // Add zoom keyboard controls
+        this.input.keyboard?.on("keydown-PLUS", () => {
+            this.zoomIn();
+        });
+
+        this.input.keyboard?.on("keydown-MINUS", () => {
+            this.zoomOut();
+        });
+
+        // Add mousewheel zoom support
+        this.input.on(
+            "wheel",
+            (
+                pointer: Phaser.Input.Pointer,
+                gameObjects: any,
+                deltaX: number,
+                deltaY: number
+            ) => {
+                if (deltaY > 0) {
+                    this.zoomOut();
+                } else {
+                    this.zoomIn();
+                }
+            }
+        );
 
         const cursors = this.input.keyboard!.createCursorKeys();
 
@@ -405,125 +468,6 @@ export class Game extends Scene {
         }
     }
 
-    // Fill the empty corners of the diamond-shaped map
-    fillEmptyCorners() {
-        const mapWidth = this.map.widthInPixels;
-        const mapHeight = this.map.heightInPixels;
-
-        // Ensure coverage area is large enough
-        const fillMargin = Math.max(mapWidth, mapHeight) * 0.8;
-
-        // Calculate fill area (larger than the map)
-        const fillArea = {
-            top: 0,
-            left: -mapWidth / 2,
-            right: mapWidth / 2,
-            bottom: mapHeight,
-        };
-
-        // Get map center point
-        const mapCenterX = 0; // Map center x-coordinate is 0 due to camera settings
-        const mapCenterY = mapHeight / 2;
-
-        // Function to check if a point is inside the diamond-shaped map
-        const isPointInMap = (x: number, y: number) => {
-            // Calculate relative distance to center
-            const relX = Math.abs(x - mapCenterX);
-            const relY = Math.abs(y - mapCenterY);
-
-            // Calculate normalized distance relative to diamond boundary
-            const normalizedDist =
-                relX / (mapWidth / 2) + relY / (mapHeight / 2);
-
-            // Point is inside the diamond if normalized distance < 0.98
-            return normalizedDist < 0.98;
-        };
-
-        // Decoration density and spacing
-        const density = 1;
-        const spacing = 30; // Reduced spacing for denser decorations
-
-        // Place decorations over the entire extended area
-        for (let x = fillArea.left; x < fillArea.right; x += spacing) {
-            for (let y = fillArea.top; y < fillArea.bottom; y += spacing) {
-                // Add random offset
-                const worldX = x + Math.random() * spacing * 0.6;
-                const worldY = y + Math.random() * spacing * 0.6;
-
-                // Only place decorations OUTSIDE the map area
-                if (!isPointInMap(worldX, worldY) && Math.random() < density) {
-                    let preferredItems: number[];
-
-                    // Choose appropriate decorations based on position
-                    if (worldY < mapCenterY) {
-                        // Upper areas prefer trees
-                        preferredItems = [0, 1, 2, 3]; // Pine trees and deciduous trees
-                    } else {
-                        // Lower areas prefer bushes and rocks
-                        preferredItems = [0, 1]; // Bushes and rocks
-                    }
-
-                    // Place decoration
-                    this.placeDecorationInWorld(worldX, worldY, preferredItems);
-                }
-            }
-        }
-    }
-
-    placeDecorationInWorld(
-        worldX: number,
-        worldY: number,
-        preferredItems?: number[]
-    ) {
-        // Select decoration type based on preferences
-        let frameIndex: number;
-
-        if (preferredItems && preferredItems.length > 0) {
-            if (Math.random() < 0.8) {
-                // 80% chance to use preferred decoration types
-                frameIndex =
-                    preferredItems[
-                        Math.floor(Math.random() * preferredItems.length)
-                    ];
-            } else {
-                // 20% chance to randomly select any decoration
-                frameIndex = Math.floor(Math.random() * 4);
-            }
-        } else {
-            // If no preference specified, choose randomly
-            frameIndex = Math.floor(Math.random() * 4);
-        }
-
-        // Create decoration sprite
-        const decoration = this.add
-            .sprite(worldX, worldY, "decorations", frameIndex)
-            .setDepth(1); // Set depth to ensure visibility above background but below map elements
-
-        // Set appropriate scale, origin and rotation based on decoration type
-        switch (frameIndex) {
-            case 0: // Pine tree - taller and slimmer
-                decoration.setScale(0.22, 0.22);
-                decoration.setOrigin(0.5, 0.8);
-                decoration.setRotation(Math.random() * 0.1 - 0.05);
-                break;
-            case 1: // Deciduous tree - medium sized
-                decoration.setScale(0.2, 0.2);
-                decoration.setOrigin(0.5, 0.9);
-                decoration.setRotation(Math.random() * 0.1 - 0.05);
-                break;
-            case 2: // Bush - smaller
-                decoration.setScale(0.15, 0.15);
-                decoration.setOrigin(0.5, 0.7);
-                decoration.setRotation(Math.random() * 0.2 - 0.1);
-                break;
-            case 3: // Rock - smallest
-                decoration.setScale(0.12, 0.12);
-                decoration.setOrigin(0.5, 0.65);
-                decoration.setRotation(Math.random() * 0.3 - 0.15);
-                break;
-        }
-    }
-
     // Add new method to handle item selection from the React component
     handleItemSelected(frameIndex: number) {
         this.selectedFrameIndex = frameIndex;
@@ -579,6 +523,19 @@ export class Game extends Scene {
 
         this.itemTiles.forEach((tile) => tile.destroy());
         this.itemTiles = [];
+    }
+
+    // Add zoom methods
+    zoomIn() {
+        if (this.cameras.main.zoom < this.maxZoom) {
+            this.cameras.main.zoom += this.zoomFactor;
+        }
+    }
+
+    zoomOut() {
+        if (this.cameras.main.zoom > this.minZoom) {
+            this.cameras.main.zoom -= this.zoomFactor;
+        }
     }
 }
 

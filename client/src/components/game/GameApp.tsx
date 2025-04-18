@@ -46,7 +46,7 @@ export function GameApp() {
     return (
         <div className="w-full h-full relative">
             <PhaserGame ref={gameRef} />
-            {isSceneReady && <ItemPanel />}
+            {/* {isSceneReady && <ItemPanel />} */}
         </div>
     );
 }

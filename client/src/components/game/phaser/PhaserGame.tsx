@@ -218,6 +218,7 @@ export const PhaserGame = forwardRef<IRefPhaserGame, IProps>(
                         margin: 0,
                         padding: 0,
                         visibility: isLoading ? "hidden" : "visible",
+                        overflow: "hidden",
                     }}
                 ></div>
             </>
