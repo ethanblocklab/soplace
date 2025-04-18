@@ -20,7 +20,6 @@ export class Game extends Scene {
     private itemTiles: Phaser.GameObjects.Sprite[] = [];
     private map: Phaser.Tilemaps.Tilemap;
     private groundLayer!: Phaser.Tilemaps.TilemapLayer;
-    private itemLayer!: Phaser.Tilemaps.TilemapLayer;
     private isDragging: boolean = false;
     private dragStartX: number = 0;
     private dragStartY: number = 0;
@@ -55,6 +54,10 @@ export class Game extends Scene {
             frameWidth: 315,
             frameHeight: 420,
         });
+        this.load.spritesheet("items", "tiles/items.png", {
+            frameWidth: 512,
+            frameHeight: 512,
+        });
 
         this.load.image("background", "tiles/sky_gradient.png");
     }
@@ -83,11 +86,6 @@ export class Game extends Scene {
         const layer = this.map.createLayer("Tile Layer 1", tileset);
         if (!layer) throw new Error("Failed to create ground layer");
         this.groundLayer = layer;
-
-        const itemLayer = this.map.createBlankLayer("Tile Layer 2", tileset);
-
-        if (!itemLayer) throw new Error("Failed to create item layer");
-        this.itemLayer = itemLayer;
 
         // Set camera bounds with layer offset
         const mapWidth = this.map.widthInPixels;
@@ -175,9 +173,11 @@ export class Game extends Scene {
         this.previewSprite = this.add.sprite(
             0,
             0,
-            "tiles",
+            "items",
             gameObject.getData("frameIndex")
         );
+        // Scale down the preview sprite to fit tile size
+        this.previewSprite.setScale(64 / 512);
         this.previewSprite.setAlpha(0.5);
         this.previewSprite.setTint(0x00ff00);
     }
@@ -265,18 +265,24 @@ export class Game extends Scene {
     }
 
     canPlaceItem(tileX: number, tileY: number): boolean {
-        const itemTile = this.itemLayer.getTileAt(tileX, tileY, true);
-        if (itemTile && itemTile.index !== -1) {
+        // Check if any sprite already exists at this tile position
+        const existingItem = this.itemTiles.find(
+            (sprite) =>
+                sprite.getData("tileX") === tileX &&
+                sprite.getData("tileY") === tileY
+        );
+
+        if (existingItem) {
             return false;
         }
 
+        // Ensure the ground tile exists (we can only place on valid ground)
         const groundTile = this.groundLayer.getTileAt(tileX, tileY, true);
         return groundTile !== null && groundTile.index !== -1;
     }
 
     placeItem(tileX: number, tileY: number, frameIndex: number) {
-        // frameIndex could be either a direct tile frame index or a user index (1-18)
-        // We'll send the raw frameIndex to the blockchain
+        // Send the placement event to the blockchain
         EventBus.emit("place-item", tileX, tileY, frameIndex);
 
         // Add event listener for when the item is placed on-chain
@@ -285,8 +291,28 @@ export class Game extends Scene {
             EventBus.removeListener("item-placed", handleItemPlaced);
 
             if (success) {
-                // If the transaction was successful, visualize the tile
-                this.itemLayer.putTileAt(frameIndex + 1, tileX, tileY);
+                // Convert tile coordinates to world coordinates
+                const worldXY = this.map.tileToWorldXY(tileX, tileY);
+                if (worldXY) {
+                    // Create a sprite instead of placing a tile
+                    const sprite = this.add.sprite(
+                        worldXY.x + 32, // Center in the tile (64/2)
+                        worldXY.y + 32,
+                        "items",
+                        frameIndex
+                    );
+
+                    // Scale down the sprite to fit tile size (512px -> 64px)
+                    sprite.setScale(64 / 512);
+
+                    // Store the sprite for later management
+                    this.itemTiles.push(sprite);
+
+                    // Store data in the sprite for identification
+                    sprite.setData("tileX", tileX);
+                    sprite.setData("tileY", tileY);
+                    sprite.setData("frameIndex", frameIndex);
+                }
 
                 console.log(
                     `Item placed at (${tileX}, ${tileY}) with type ${frameIndex}`
@@ -346,23 +372,35 @@ export class Game extends Scene {
     initPlacedItems(items: PlacedItem[]) {
         this.placedItems = items;
 
-        // Clear any existing items first
-        // this.itemLayer.forEachTile((tile) => {
-        //     if (tile && tile.index !== -1) {
-        //         this.itemLayer.removeTileAt(tile.x, tile.y);
-        //     }
-        // });
+        // Clean up existing item sprites
+        this.itemTiles.forEach((sprite) => sprite.destroy());
+        this.itemTiles = [];
 
-        // Place each item on the tilemap
+        // Place each item on the map as a sprite
         for (const item of this.placedItems) {
             const { x, y, itemId } = item;
 
-            // Get the correct frame index for the tileset
-            const frameIndex = getUserIndexToTileFrame(itemId);
+            // Convert tile coordinates to world coordinates
+            const worldXY = this.map.tileToWorldXY(x, y);
+            if (worldXY) {
+                // Create a sprite for the item
+                const sprite = this.add.sprite(
+                    worldXY.x + 32, // Center in the tile
+                    worldXY.y + 32,
+                    "items",
+                    itemId
+                );
 
-            // Place the item directly on the layer
-            if (!this.itemLayer.getTileAt(x, y)) {
-                this.itemLayer.putTileAt(frameIndex + 1, x, y);
+                // Scale down the sprite to fit tile size
+                sprite.setScale(64 / 512);
+
+                // Store the sprite for later management
+                this.itemTiles.push(sprite);
+
+                // Store data in the sprite for identification
+                sprite.setData("tileX", x);
+                sprite.setData("tileY", y);
+                sprite.setData("frameIndex", itemId);
             }
         }
     }
@@ -495,7 +533,10 @@ export class Game extends Scene {
             this.previewSprite.destroy();
         }
 
-        this.previewSprite = this.add.sprite(0, 0, "tiles", frameIndex);
+        // Use the "items" texture for the preview
+        this.previewSprite = this.add.sprite(0, 0, "items", frameIndex);
+        // Scale down the preview sprite to fit tile size
+        this.previewSprite.setScale(64 / 512);
         this.previewSprite.setAlpha(0.5);
         this.previewSprite.setTint(0x00ff00);
 
