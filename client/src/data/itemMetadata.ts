@@ -17,6 +17,14 @@ export interface ItemMetadata {
  * Map of all item metadata indexed by itemId
  */
 const itemsMetadata: Record<number, ItemMetadata> = {
+    1: {
+        id: 1,
+        name: "Gold Mine",
+        width: 3,
+        height: 3,
+        category: "items",
+        description: "Gold Mine",
+    },
     2: {
         id: 2,
         name: "Gold Mine",

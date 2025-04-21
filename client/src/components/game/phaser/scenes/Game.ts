@@ -266,6 +266,7 @@ export class Game extends Scene {
                 const tileX = pointerXY.x;
                 const tileY = pointerXY.y;
                 const frameIndex = gameObject.getData("frameIndex");
+                console.log("frameIndex", frameIndex);
                 const { width, height } = getItemDimensions(frameIndex);
 
                 if (this.canPlaceItem(tileX, tileY, width, height)) {
