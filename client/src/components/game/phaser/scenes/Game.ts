@@ -4,6 +4,7 @@ import {
     getAllItemTileFrames,
     getUserIndexToTileFrame,
 } from "../utils/ItemTileMapper";
+import { getItemDimensions } from "@/data/itemMetadata";
 
 interface PlacedItem {
     id: string;
@@ -11,6 +12,8 @@ interface PlacedItem {
     player: string;
     x: number;
     y: number;
+    width: number; // Width in tiles
+    height: number; // Height in tiles
 }
 
 export class Game extends Scene {
@@ -262,8 +265,10 @@ export class Game extends Scene {
             if (pointerXY) {
                 const tileX = pointerXY.x;
                 const tileY = pointerXY.y;
+                const frameIndex = gameObject.getData("frameIndex");
+                const { width, height } = getItemDimensions(frameIndex);
 
-                if (this.canPlaceItem(tileX, tileY)) {
+                if (this.canPlaceItem(tileX, tileY, width, height)) {
                     this.previewSprite.setAlpha(0.5);
                     this.previewSprite.setTint(0x00ff00);
                 } else {
@@ -274,8 +279,8 @@ export class Game extends Scene {
                 const worldXY = this.map.tileToWorldXY(tileX, tileY);
                 if (worldXY) {
                     this.previewSprite.setPosition(
-                        worldXY.x + 32,
-                        worldXY.y + 32
+                        worldXY.x + (width * 64) / 2,
+                        worldXY.y + (height * 64) / 2
                     );
                 }
             }
@@ -304,10 +309,11 @@ export class Game extends Scene {
 
         const tileX = Math.floor(pointerXY.x);
         const tileY = Math.floor(pointerXY.y);
+        const frameIndex = gameObject.getData("frameIndex");
+        const { width, height } = getItemDimensions(frameIndex);
 
-        if (this.canPlaceItem(tileX, tileY)) {
-            const frameIndex = gameObject.getData("frameIndex");
-            this.placeItem(tileX, tileY, frameIndex);
+        if (this.canPlaceItem(tileX, tileY, width, height)) {
+            this.placeItem(tileX, tileY, frameIndex, width, height);
         }
 
         const dragStartX = gameObject.input?.dragStartX ?? gameObject.x;
@@ -320,26 +326,48 @@ export class Game extends Scene {
         }
     }
 
-    canPlaceItem(tileX: number, tileY: number): boolean {
-        // Check if any sprite already exists at this tile position
-        const existingItem = this.itemTiles.find(
-            (sprite) =>
-                sprite.getData("tileX") === tileX &&
-                sprite.getData("tileY") === tileY
-        );
+    canPlaceItem(
+        tileX: number,
+        tileY: number,
+        width: number = 1,
+        height: number = 1
+    ): boolean {
+        // Check if any tiles in the area are already occupied
+        for (let x = tileX; x < tileX + width; x++) {
+            for (let y = tileY; y < tileY + height; y++) {
+                // Check if any sprite already exists at this tile position
+                const existingItem = this.itemTiles.find(
+                    (sprite) =>
+                        sprite.getData("tileX") <= x &&
+                        sprite.getData("tileX") + sprite.getData("width") > x &&
+                        sprite.getData("tileY") <= y &&
+                        sprite.getData("tileY") + sprite.getData("height") > y
+                );
 
-        if (existingItem) {
-            return false;
+                if (existingItem) {
+                    return false;
+                }
+
+                // Ensure the ground tile exists (we can only place on valid ground)
+                const groundTile = this.groundLayer.getTileAt(x, y, true);
+                if (groundTile === null || groundTile.index === -1) {
+                    return false;
+                }
+            }
         }
 
-        // Ensure the ground tile exists (we can only place on valid ground)
-        const groundTile = this.groundLayer.getTileAt(tileX, tileY, true);
-        return groundTile !== null && groundTile.index !== -1;
+        return true;
     }
 
-    placeItem(tileX: number, tileY: number, frameIndex: number) {
+    placeItem(
+        tileX: number,
+        tileY: number,
+        frameIndex: number,
+        width: number = 1,
+        height: number = 1
+    ) {
         // Send the placement event to the blockchain
-        EventBus.emit("place-item", tileX, tileY, frameIndex);
+        EventBus.emit("place-item", tileX, tileY, frameIndex, width, height);
 
         // Add event listener for when the item is placed on-chain
         const handleItemPlaced = (success: boolean, error?: Error) => {
@@ -352,14 +380,16 @@ export class Game extends Scene {
                 if (worldXY) {
                     // Create a sprite instead of placing a tile
                     const sprite = this.add.sprite(
-                        worldXY.x + 32, // Center in the tile (64/2)
-                        worldXY.y + 32,
+                        worldXY.x + (width * 64) / 2, // Center in the tile group
+                        worldXY.y + (height * 64) / 2,
                         "items",
                         frameIndex
                     );
 
-                    // Scale down the sprite to fit tile size (512px -> 64px)
-                    sprite.setScale(64 / 512);
+                    // Scale based on the item size
+                    const scaleX = (width * 64) / 512;
+                    const scaleY = (height * 64) / 512;
+                    sprite.setScale(scaleX, scaleY);
 
                     // Store the sprite for later management
                     this.itemTiles.push(sprite);
@@ -368,10 +398,12 @@ export class Game extends Scene {
                     sprite.setData("tileX", tileX);
                     sprite.setData("tileY", tileY);
                     sprite.setData("frameIndex", frameIndex);
+                    sprite.setData("width", width);
+                    sprite.setData("height", height);
                 }
 
                 console.log(
-                    `Item placed at (${tileX}, ${tileY}) with type ${frameIndex}`
+                    `Item placed at (${tileX}, ${tileY}) with size ${width}x${height} and type ${frameIndex}`
                 );
             }
         };
@@ -399,11 +431,13 @@ export class Game extends Scene {
             if (pointerXY) {
                 const tileX = pointerXY.x;
                 const tileY = pointerXY.y;
+                const width = this.previewSprite.getData("width") || 1;
+                const height = this.previewSprite.getData("height") || 1;
 
                 // Make preview visible when over the map
                 this.previewSprite.visible = true;
 
-                if (this.canPlaceItem(tileX, tileY)) {
+                if (this.canPlaceItem(tileX, tileY, width, height)) {
                     this.previewSprite.setAlpha(0.5);
                     this.previewSprite.setTint(0x00ff00);
                 } else {
@@ -414,8 +448,8 @@ export class Game extends Scene {
                 const worldXY = this.map.tileToWorldXY(tileX, tileY);
                 if (worldXY) {
                     this.previewSprite.setPosition(
-                        worldXY.x + 32,
-                        worldXY.y + 32
+                        worldXY.x + (width * 64) / 2,
+                        worldXY.y + (height * 64) / 2
                     );
                 }
             } else {
@@ -435,21 +469,23 @@ export class Game extends Scene {
 
         // Place each item on the map as a sprite
         for (const item of this.placedItems) {
-            const { x, y, itemId } = item;
+            const { x, y, itemId, width = 1, height = 1 } = item;
 
             // Convert tile coordinates to world coordinates
             const worldXY = this.map.tileToWorldXY(x, y);
             if (worldXY) {
                 // Create a sprite for the item
                 const sprite = this.add.sprite(
-                    worldXY.x + 32, // Center in the tile
-                    worldXY.y + 32,
+                    worldXY.x + (width * 64) / 2, // Center in the tile group
+                    worldXY.y + (height * 64) / 2,
                     "items",
                     itemId
                 );
 
-                // Scale down the sprite to fit tile size
-                sprite.setScale(64 / 512);
+                // Scale based on the item size
+                const scaleX = (width * 64) / 512;
+                const scaleY = (height * 64) / 512;
+                sprite.setScale(scaleX, scaleY);
 
                 // Store the sprite for later management
                 this.itemTiles.push(sprite);
@@ -458,6 +494,8 @@ export class Game extends Scene {
                 sprite.setData("tileX", x);
                 sprite.setData("tileY", y);
                 sprite.setData("frameIndex", itemId);
+                sprite.setData("width", width);
+                sprite.setData("height", height);
             }
         }
     }
@@ -466,6 +504,9 @@ export class Game extends Scene {
     handleItemSelected(frameIndex: number) {
         this.selectedFrameIndex = frameIndex;
 
+        // Get dimensions from metadata
+        const { width, height } = getItemDimensions(frameIndex);
+
         // Create a preview sprite when an item is selected
         if (this.previewSprite) {
             this.previewSprite.destroy();
@@ -473,10 +514,18 @@ export class Game extends Scene {
 
         // Use the "items" texture for the preview
         this.previewSprite = this.add.sprite(0, 0, "items", frameIndex);
-        // Scale down the preview sprite to fit tile size
-        this.previewSprite.setScale(64 / 512);
+
+        // Scale based on the item size from metadata
+        const scaleX = (width * 64) / 512;
+        const scaleY = (height * 64) / 512;
+        this.previewSprite.setScale(scaleX, scaleY);
+
         this.previewSprite.setAlpha(0.5);
         this.previewSprite.setTint(0x00ff00);
+
+        // Store width and height in the preview sprite for reference
+        this.previewSprite.setData("width", width);
+        this.previewSprite.setData("height", height);
 
         // Hide the preview initially until mouse moves over valid position
         this.previewSprite.visible = false;
@@ -540,9 +589,17 @@ export class Game extends Scene {
 
         const tileX = Math.floor(pointerXY.x);
         const tileY = Math.floor(pointerXY.y);
+        const width = this.previewSprite?.getData("width") || 1;
+        const height = this.previewSprite?.getData("height") || 1;
 
-        if (this.canPlaceItem(tileX, tileY)) {
-            this.placeItem(tileX, tileY, this.selectedFrameIndex);
+        if (this.canPlaceItem(tileX, tileY, width, height)) {
+            this.placeItem(
+                tileX,
+                tileY,
+                this.selectedFrameIndex,
+                width,
+                height
+            );
         }
     }
 

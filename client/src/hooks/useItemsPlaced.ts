@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { executeQuery } from "@/config/graphql";
+import { getItemDimensions } from "@/data/itemMetadata";
 
 // Types for the GraphQL response
 interface ItemPlaced {
@@ -8,6 +9,12 @@ interface ItemPlaced {
     player: string;
     x: number;
     y: number;
+}
+
+// Extended interface with dimensions
+export interface EnhancedItemPlaced extends ItemPlaced {
+    width: number;
+    height: number;
 }
 
 interface ItemPlacedResponse {
@@ -29,12 +36,27 @@ const ITEMS_PLACED_QUERY = `
 
 /**
  * Hook to fetch all placed items from the subgraph
+ * and enhance them with dimension data from metadata
  */
 export function useItemsPlaced() {
-    return useQuery<ItemPlacedResponse>({
+    return useQuery<{ itemPlaceds: EnhancedItemPlaced[] }>({
         queryKey: ["itemsPlaced"],
         queryFn: async () => {
-            return executeQuery<ItemPlacedResponse>(ITEMS_PLACED_QUERY);
+            const response = await executeQuery<ItemPlacedResponse>(
+                ITEMS_PLACED_QUERY
+            );
+
+            // Enhance items with dimensions from metadata
+            const enhancedItems = response.itemPlaceds.map((item) => {
+                const dimensions = getItemDimensions(item.itemId);
+                return {
+                    ...item,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                };
+            });
+
+            return { itemPlaceds: enhancedItems };
         },
         refetchInterval: 5000, // Refetch every 5 seconds
         refetchOnWindowFocus: true,
