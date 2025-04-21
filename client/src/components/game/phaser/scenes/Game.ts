@@ -66,18 +66,6 @@ export class Game extends Scene {
     }
 
     create() {
-        // const forestBackground = this.add
-        //     .rectangle(
-        //         0,
-        //         0,
-        //         this.cameras.main.width * 2,
-        //         this.cameras.main.height * 2,
-        //         0x0a3410
-        //     )
-        //     .setOrigin(0.5)
-        //     .setScrollFactor(0)
-        //     .setDepth(-2);
-
         // Create the map
         this.map = this.add.tilemap("map");
 

@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAllItemTileFrames } from "./phaser/utils/ItemTileMapper";
 import { EventBus } from "./phaser/EventBus";
 
 export function ItemPanel() {
     const [selectedItemFrame, setSelectedItemFrame] = useState<number | null>(
         null
     );
-    const itemTiles = getAllItemTileFrames();
+    const itemTiles = [1];
 
     const handleItemSelect = (frameIndex: number) => {
         setSelectedItemFrame(frameIndex);
@@ -31,10 +30,9 @@ export function ItemPanel() {
                             className="item-sprite"
                             style={{
                                 backgroundImage:
-                                    "url('/assets/tiles/outside.png')",
-                                backgroundPosition: `${
-                                    -(frameIndex % 30) * 64
-                                }px ${-Math.floor(frameIndex / 30) * 64}px`,
+                                    "url('/assets/tiles/items.png')",
+                                backgroundPosition: `0px 0px`,
+                                backgroundSize: "64px 64px",
                                 width: "64px",
                                 height: "64px",
                                 backgroundRepeat: "no-repeat",
