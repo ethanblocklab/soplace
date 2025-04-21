@@ -10,9 +10,41 @@ export function ItemPanel() {
     const itemTiles = [1];
 
     const handleItemSelect = (frameIndex: number) => {
+        // Toggle behavior - if clicking the same item, cancel the selection
+        if (selectedItemFrame === frameIndex) {
+            cancelSelection();
+            return;
+        }
+
+        // Otherwise select the new item
         setSelectedItemFrame(frameIndex);
         EventBus.emit("item-selected", frameIndex);
     };
+
+    // Add function to cancel the selection
+    const cancelSelection = () => {
+        setSelectedItemFrame(null);
+        EventBus.emit("item-selection-cancelled");
+    };
+
+    // Add useEffect to listen for selection cancellation
+    useEffect(() => {
+        // Handle cancellation events from the game
+        const handleCancellation = () => {
+            setSelectedItemFrame(null);
+        };
+
+        // Subscribe to the event
+        EventBus.on("item-selection-cancelled", handleCancellation);
+
+        // Clean up event listener when component unmounts
+        return () => {
+            EventBus.removeListener(
+                "item-selection-cancelled",
+                handleCancellation
+            );
+        };
+    }, []);
 
     return (
         <div className="item-panel">
@@ -41,6 +73,15 @@ export function ItemPanel() {
                     </div>
                 ))}
             </div>
+
+            {/* Show cancel button when an item is selected */}
+            {selectedItemFrame !== null && (
+                <div className="cancel-button-container">
+                    <button className="cancel-button" onClick={cancelSelection}>
+                        Cancel Selection
+                    </button>
+                </div>
+            )}
 
             <style jsx>{`
                 .item-panel {
@@ -90,6 +131,28 @@ export function ItemPanel() {
                 .item-tile.selected {
                     border-color: #66ff66;
                     background: rgba(102, 255, 102, 0.2);
+                }
+
+                .cancel-button-container {
+                    margin-top: 16px;
+                    display: flex;
+                    justify-content: center;
+                }
+
+                .cancel-button {
+                    background: rgba(255, 80, 80, 0.7);
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px 16px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    font-weight: bold;
+                }
+
+                .cancel-button:hover {
+                    background: rgba(255, 50, 50, 0.9);
+                    transform: scale(1.05);
                 }
             `}</style>
         </div>

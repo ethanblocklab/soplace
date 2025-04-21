@@ -158,6 +158,11 @@ export class Game extends Scene {
             this.handleItemSelected(frameIndex);
         });
 
+        // Listen for cancellation events from the React component
+        EventBus.on("item-selection-cancelled", () => {
+            this.cancelItemSelection();
+        });
+
         // Add zoom keyboard controls
         this.input.keyboard?.on("keydown-PLUS", () => {
             this.zoomIn();
@@ -387,7 +392,8 @@ export class Game extends Scene {
             );
             const pointerXY = this.map.worldToTileXY(
                 worldPoint.x,
-                worldPoint.y
+                worldPoint.y,
+                true
             );
 
             if (pointerXY) {
@@ -477,11 +483,53 @@ export class Game extends Scene {
 
         // Enable placing items by clicking on map
         this.input.on("pointerdown", this.handleMapClick, this);
+
+        // Add right-click handling to cancel selection
+        this.input.on("pointerdown", this.handleRightClick, this);
+
+        // Add Escape key handling to cancel selection
+        this.input.keyboard?.on("keydown-ESC", this.cancelItemSelection, this);
+    }
+
+    // Add method to handle right-click for cancellation
+    handleRightClick(pointer: Phaser.Input.Pointer) {
+        // Check if it's a right click (button 2)
+        if (pointer.button === 2) {
+            this.cancelItemSelection();
+        }
+    }
+
+    // Add method to cancel item selection
+    cancelItemSelection() {
+        // Only proceed if we have an active selection
+        if (this.selectedFrameIndex === null && !this.previewSprite) return;
+
+        // Clear the selection
+        this.selectedFrameIndex = null;
+
+        // Remove the preview sprite
+        if (this.previewSprite) {
+            this.previewSprite.destroy();
+            this.previewSprite = null;
+        }
+
+        // Remove the click handlers
+        this.input.off("pointerdown", this.handleMapClick, this);
+        this.input.off("pointerdown", this.handleRightClick, this);
+
+        // Remove the keyboard handler
+        this.input.keyboard?.off("keydown-ESC", this.cancelItemSelection, this);
+
+        // Notify the React component about the cancellation
+        EventBus.emit("item-selection-cancelled");
     }
 
     handleMapClick(pointer: Phaser.Input.Pointer) {
         // Only handle clicks if we have a selected item
         if (!this.selectedFrameIndex || this.isDragging) return;
+
+        // Ignore right clicks in this handler
+        if (pointer.button !== 0) return;
 
         const worldPoint = this.cameras.main.getWorldPoint(
             pointer.x,
@@ -502,6 +550,10 @@ export class Game extends Scene {
     shutdown() {
         // Clean up all event listeners to prevent memory leaks
         EventBus.removeAllListeners("item-selected");
+        EventBus.removeAllListeners("item-selection-cancelled");
+
+        // Remove keyboard listeners
+        this.input.keyboard?.off("keydown-ESC", this.cancelItemSelection, this);
 
         // Clean up other resources
         if (this.previewSprite) {
