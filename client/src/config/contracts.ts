@@ -1,6 +1,6 @@
 // Replace with the proxy address after deployment to Somnia testnet
 export const isometricTilemapAddress =
-    "0x89e325D556d760a38bDA9f15De5359a6B17C75Ad"; // Update after deployment
+    "0x920eFEe19B77027dF1428984803d68124bdB271f"; // Update after deployment
 
 // Isometric Tilemap Contract ABI
 export const isometricTilemapAbi = [
@@ -28,6 +28,27 @@ export const isometricTilemapAbi = [
     },
     {
         type: "function",
+        name: "configureItem",
+        inputs: [
+            { name: "itemId", type: "uint8", internalType: "uint8" },
+            { name: "width", type: "uint8", internalType: "uint8" },
+            { name: "height", type: "uint8", internalType: "uint8" },
+        ],
+        outputs: [],
+        stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "getItemConfig",
+        inputs: [{ name: "itemId", type: "uint8", internalType: "uint8" }],
+        outputs: [
+            { name: "width", type: "uint8", internalType: "uint8" },
+            { name: "height", type: "uint8", internalType: "uint8" },
+        ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
         name: "getTile",
         inputs: [
             { name: "x", type: "uint16", internalType: "uint16" },
@@ -38,6 +59,18 @@ export const isometricTilemapAbi = [
             { name: "itemId", type: "uint8", internalType: "uint8" },
             { name: "isOccupied", type: "bool", internalType: "bool" },
         ],
+        stateMutability: "view",
+    },
+    {
+        type: "function",
+        name: "hasCollision",
+        inputs: [
+            { name: "x", type: "uint16", internalType: "uint16" },
+            { name: "y", type: "uint16", internalType: "uint16" },
+            { name: "width", type: "uint8", internalType: "uint8" },
+            { name: "height", type: "uint8", internalType: "uint8" },
+        ],
+        outputs: [{ name: "", type: "bool", internalType: "bool" }],
         stateMutability: "view",
     },
     {
@@ -53,6 +86,17 @@ export const isometricTilemapAbi = [
         ],
         outputs: [],
         stateMutability: "nonpayable",
+    },
+    {
+        type: "function",
+        name: "itemConfigs",
+        inputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+        outputs: [
+            { name: "width", type: "uint8", internalType: "uint8" },
+            { name: "height", type: "uint8", internalType: "uint8" },
+            { name: "isConfigured", type: "bool", internalType: "bool" },
+        ],
+        stateMutability: "view",
     },
     {
         type: "function",
@@ -125,17 +169,6 @@ export const isometricTilemapAbi = [
     },
     {
         type: "function",
-        name: "updateItem",
-        inputs: [
-            { name: "x", type: "uint16", internalType: "uint16" },
-            { name: "y", type: "uint16", internalType: "uint16" },
-            { name: "newItemId", type: "uint8", internalType: "uint8" },
-        ],
-        outputs: [],
-        stateMutability: "nonpayable",
-    },
-    {
-        type: "function",
         name: "upgradeToAndCall",
         inputs: [
             {
@@ -164,6 +197,31 @@ export const isometricTilemapAbi = [
                 type: "uint64",
                 indexed: false,
                 internalType: "uint64",
+            },
+        ],
+        anonymous: false,
+    },
+    {
+        type: "event",
+        name: "ItemConfigured",
+        inputs: [
+            {
+                name: "itemId",
+                type: "uint8",
+                indexed: false,
+                internalType: "uint8",
+            },
+            {
+                name: "width",
+                type: "uint8",
+                indexed: false,
+                internalType: "uint8",
+            },
+            {
+                name: "height",
+                type: "uint8",
+                indexed: false,
+                internalType: "uint8",
             },
         ],
         anonymous: false,

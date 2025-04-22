@@ -4,10 +4,7 @@
  */
 
 // The actual tile frame indices used in the game
-const ITEM_TILES = [
-    50, 51, 80, 81, 84, 86, 110, 111, 112, 116, 117, 119, 120, 121, 124, 125,
-    128, 129,
-];
+const ITEM_TILES = [1];
 
 /**
  * Converts a user-friendly index (1-18) to the actual tile frame index
