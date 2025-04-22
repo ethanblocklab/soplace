@@ -131,18 +131,15 @@ export class Game extends Scene {
 
         // Add mouse drag functionality for camera movement
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-            console.log("pointerdown", pointer.x, pointer.y);
             const worldPoint = this.cameras.main.getWorldPoint(
                 pointer.x,
                 pointer.y
             );
-            console.log("worldPoint", worldPoint.x, worldPoint.y);
             const tileXY = this.map.worldToTileXY(
                 worldPoint.x,
                 worldPoint.y,
                 true
             );
-            console.log("tileXY", tileXY?.x, tileXY?.y);
             if (pointer.button === 0) {
                 // Left click
                 // Only enable map dragging if we're not placing an item
@@ -388,14 +385,9 @@ export class Game extends Scene {
         // Place each item on the map as a sprite
         for (const item of this.placedItems) {
             const { x, y, itemId, width = 1, height = 1 } = item;
-            console.log("Placing item:", { x, y, itemId, width, height });
 
             // Convert the base tile coordinates (top-most corner of the footprint) to world coordinates
             const worldXY = this.map.tileToWorldXY(x, y);
-
-            console.log(
-                `Tile (${x}, ${y}) -> WorldXY (${worldXY?.x}, ${worldXY?.y})`
-            );
 
             if (worldXY) {
                 // Create a sprite for the item
@@ -534,7 +526,6 @@ export class Game extends Scene {
         const width = this.previewSprite?.getData("width") || 1;
         const height = this.previewSprite?.getData("height") || 1;
 
-        console.log("selectedFrameIndex", this.selectedFrameIndex);
         if (this.canPlaceItem(tileX, tileY, width, height)) {
             this.placeItem(
                 tileX,
