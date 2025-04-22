@@ -6,6 +6,11 @@ import {
 } from "../utils/ItemTileMapper";
 import { getItemDimensions } from "@/data/itemMetadata";
 
+const { IsometricTileToWorldXY } = Phaser.Tilemaps.Components;
+
+const itemWidth = 2224;
+const itemHeight = 1626;
+
 interface PlacedItem {
     id: string;
     itemId: number;
@@ -59,9 +64,9 @@ export class Game extends Scene {
             frameWidth: 315,
             frameHeight: 420,
         });
-        this.load.spritesheet("items", "tiles/items.png", {
-            frameWidth: 512,
-            frameHeight: 512,
+        this.load.spritesheet("items", "tiles/goldmine.png", {
+            frameWidth: itemWidth,
+            frameHeight: itemHeight,
         });
 
         this.load.image("background", "tiles/sky_gradient.png");
@@ -82,6 +87,7 @@ export class Game extends Scene {
         const layer = this.map.createLayer("Tile Layer 1", tileset);
         if (!layer) throw new Error("Failed to create ground layer");
         this.groundLayer = layer;
+        this.groundLayer.setOrigin(0.5, 0);
 
         // With this implementation
         const decorObjects = this.map.createFromObjects("decoration", [
@@ -125,6 +131,18 @@ export class Game extends Scene {
 
         // Add mouse drag functionality for camera movement
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+            console.log("pointerdown", pointer.x, pointer.y);
+            const worldPoint = this.cameras.main.getWorldPoint(
+                pointer.x,
+                pointer.y
+            );
+            console.log("worldPoint", worldPoint.x, worldPoint.y);
+            const tileXY = this.map.worldToTileXY(
+                worldPoint.x,
+                worldPoint.y,
+                true
+            );
+            console.log("tileXY", tileXY?.x, tileXY?.y);
             if (pointer.button === 0) {
                 // Left click
                 // Only enable map dragging if we're not placing an item
@@ -274,17 +292,19 @@ export class Game extends Scene {
                 const worldXY = this.map.tileToWorldXY(tileX, tileY);
                 if (worldXY) {
                     // Create a sprite instead of placing a tile
-                    const sprite = this.add.sprite(
-                        worldXY.x + (width * 64) / 2, // Center in the tile group
-                        worldXY.y + (height * 64) / 2,
-                        "items",
-                        frameIndex
-                    );
-
-                    // Scale based on the item size
-                    const scaleX = (width * 64) / 512;
-                    const scaleY = (height * 64) / 512;
-                    sprite.setScale(scaleX, scaleY);
+                    // Use the same logic as initPlacedItems for positioning and scaling
+                    const sprite = this.add
+                        .sprite(
+                            worldXY.x + 32, // Center horizontally on the base tile
+                            worldXY.y + height * 32 + 32, // Adjust Y based on item height and tile height
+                            "items",
+                            frameIndex
+                        )
+                        .setOrigin(0.5, 1) // Anchor sprite at bottom-center
+                        .setScale(
+                            (width * 64) / itemWidth,
+                            (height * 32) / itemHeight
+                        );
 
                     // Store the sprite for later management
                     this.itemTiles.push(sprite);
@@ -332,19 +352,22 @@ export class Game extends Scene {
                 // Make preview visible when over the map
                 this.previewSprite.visible = true;
 
+                // Check placement validity and set tint/alpha
                 if (this.canPlaceItem(tileX, tileY, width, height)) {
                     this.previewSprite.setAlpha(0.5);
-                    this.previewSprite.setTint(0x00ff00);
+                    this.previewSprite.setTint(0x00ff00); // Green tint for valid placement
                 } else {
                     this.previewSprite.setAlpha(0.3);
-                    this.previewSprite.setTint(0xff0000);
+                    this.previewSprite.setTint(0xff0000); // Red tint for invalid placement
                 }
 
+                // Calculate world coordinates for the potential placement tile
                 const worldXY = this.map.tileToWorldXY(tileX, tileY);
                 if (worldXY) {
+                    // Position the preview sprite using the same logic as placed items
                     this.previewSprite.setPosition(
-                        worldXY.x + (width * 64) / 2,
-                        worldXY.y + (height * 64) / 2
+                        worldXY.x + 32, // Center horizontally
+                        worldXY.y + height * 32 + 32 // Adjust Y based on item height
                     );
                 }
             } else {
@@ -365,22 +388,33 @@ export class Game extends Scene {
         // Place each item on the map as a sprite
         for (const item of this.placedItems) {
             const { x, y, itemId, width = 1, height = 1 } = item;
+            console.log("Placing item:", { x, y, itemId, width, height });
 
-            // Convert tile coordinates to world coordinates
+            // Convert the base tile coordinates (top-most corner of the footprint) to world coordinates
             const worldXY = this.map.tileToWorldXY(x, y);
+
+            console.log(
+                `Tile (${x}, ${y}) -> WorldXY (${worldXY?.x}, ${worldXY?.y})`
+            );
+
             if (worldXY) {
                 // Create a sprite for the item
-                const sprite = this.add.sprite(
-                    worldXY.x + (width * 64) / 2, // Center in the tile group
-                    worldXY.y + (height * 64) / 2,
-                    "items",
-                    itemId
-                );
-
-                // Scale based on the item size
-                const scaleX = (width * 64) / 512;
-                const scaleY = (height * 64) / 512;
-                sprite.setScale(scaleX, scaleY);
+                // Position using the base tile's world coordinates.
+                // Add half tile width to center horizontally on the base tile's diamond.
+                // The Y coordinate from tileToWorldXY usually represents the top point of the tile diamond.
+                // Setting origin to (0.5, 1) anchors the sprite at its bottom-center.
+                const sprite = this.add
+                    .sprite(
+                        worldXY.x + 32, // Adjust X to center on the tile base (assuming tileWidth = 64)
+                        worldXY.y + height * 32 + 32, // Adjust Y to place the bottom of the sprite (origin 1) at the tile's vertical center (assuming tileHeight = 64, isoHeight = 32)
+                        "items",
+                        itemId
+                    )
+                    .setOrigin(0.5, 1) // Anchor sprite at bottom-center
+                    .setScale(
+                        (width * 64) / itemWidth,
+                        (height * 32) / itemHeight
+                    ); // Scale based on isometric height (32)
 
                 // Store the sprite for later management
                 this.itemTiles.push(sprite);
@@ -391,6 +425,14 @@ export class Game extends Scene {
                 sprite.setData("frameIndex", itemId);
                 sprite.setData("width", width);
                 sprite.setData("height", height);
+
+                console.log(
+                    `Placed sprite for ${itemId} at world (${sprite.x}, ${sprite.y}) with origin (${sprite.originX}, ${sprite.originY})`
+                );
+            } else {
+                console.warn(
+                    `Could not convert tile coordinates (${x}, ${y}) to world coordinates.`
+                );
             }
         }
     }
@@ -410,13 +452,14 @@ export class Game extends Scene {
         // Use the "items" texture for the preview
         this.previewSprite = this.add.sprite(0, 0, "items", frameIndex);
 
-        // Scale based on the item size from metadata
-        const scaleX = (width * 64) / 512;
-        const scaleY = (height * 64) / 512;
+        // Scale based on the item size from metadata and the spritesheet dimensions
+        const scaleX = (width * 64) / itemWidth;
+        const scaleY = (height * 32) / itemHeight; // Use isometric height factor (32)
         this.previewSprite.setScale(scaleX, scaleY);
+        this.previewSprite.setOrigin(0.5, 1); // Set origin to bottom-center
 
         this.previewSprite.setAlpha(0.5);
-        this.previewSprite.setTint(0x00ff00);
+        this.previewSprite.setTint(0x00ff00); // Default to valid tint
 
         // Store width and height in the preview sprite for reference
         this.previewSprite.setData("width", width);
@@ -479,11 +522,15 @@ export class Game extends Scene {
             pointer.x,
             pointer.y
         );
-        const pointerXY = this.map.worldToTileXY(worldPoint.x, worldPoint.y);
+        const pointerXY = this.map.worldToTileXY(
+            worldPoint.x,
+            worldPoint.y,
+            true
+        );
         if (!pointerXY) return;
 
-        const tileX = Math.floor(pointerXY.x);
-        const tileY = Math.floor(pointerXY.y);
+        const tileX = pointerXY.x;
+        const tileY = pointerXY.y;
         const width = this.previewSprite?.getData("width") || 1;
         const height = this.previewSprite?.getData("height") || 1;
 
@@ -496,6 +543,8 @@ export class Game extends Scene {
                 width,
                 height
             );
+            // Optionally, clear selection after placing
+            // this.cancelItemSelection();
         }
     }
 
