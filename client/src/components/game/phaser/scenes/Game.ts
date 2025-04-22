@@ -18,7 +18,6 @@ interface PlacedItem {
 
 export class Game extends Scene {
     private controls: Phaser.Cameras.Controls.SmoothedKeyControl;
-    private draggedTile: Phaser.GameObjects.Sprite | null = null;
     private previewSprite: Phaser.GameObjects.Sprite | null = null;
     private itemTiles: Phaser.GameObjects.Sprite[] = [];
     private map: Phaser.Tilemaps.Tilemap;
@@ -124,12 +123,12 @@ export class Game extends Scene {
 
         this.cameras.main.centerOn(0, 0);
 
-        // Add mouse drag functionality
+        // Add mouse drag functionality for camera movement
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             if (pointer.button === 0) {
                 // Left click
-                // Only enable map dragging if we're not dragging an item
-                if (!this.draggedTile) {
+                // Only enable map dragging if we're not placing an item
+                if (!this.selectedFrameIndex) {
                     this.isDragging = true;
                     this.dragStartX = pointer.x;
                     this.dragStartY = pointer.y;
@@ -147,7 +146,7 @@ export class Game extends Scene {
         });
 
         this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-            if (this.isDragging && !this.draggedTile) {
+            if (this.isDragging && !this.selectedFrameIndex) {
                 const dx = this.dragStartX - pointer.x;
                 const dy = this.dragStartY - pointer.y;
 
@@ -166,6 +165,18 @@ export class Game extends Scene {
             this.cancelItemSelection();
         });
 
+        // Set up zoom controls
+        this.setupZoomControls();
+
+        // Listen for placed items from external sources
+        EventBus.on("items-loaded", (items: PlacedItem[]) =>
+            this.initPlacedItems(items)
+        );
+
+        EventBus.emit("current-scene-ready", this);
+    }
+
+    setupZoomControls() {
         // Add zoom keyboard controls
         this.input.keyboard?.on("keydown-PLUS", () => {
             this.zoomIn();
@@ -208,123 +219,6 @@ export class Game extends Scene {
         this.controls = new Phaser.Cameras.Controls.SmoothedKeyControl(
             controlConfig
         );
-
-        this.input.on("dragstart", this.onDragStart, this);
-        this.input.on("drag", this.onDrag, this);
-        this.input.on("dragend", this.onDragEnd, this);
-
-        // Listen for placed items from external sources
-        EventBus.on("items-loaded", (items: PlacedItem[]) =>
-            this.initPlacedItems(items)
-        );
-
-        EventBus.emit("current-scene-ready", this);
-    }
-
-    onDragStart(
-        pointer: Phaser.Input.Pointer,
-        gameObject: Phaser.GameObjects.Sprite
-    ) {
-        this.draggedTile = gameObject;
-        gameObject.setTint(0x66ff66);
-
-        // Create preview sprite
-        this.previewSprite = this.add.sprite(
-            0,
-            0,
-            "items",
-            gameObject.getData("frameIndex")
-        );
-        // Scale down the preview sprite to fit tile size
-        this.previewSprite.setScale(64 / 512);
-        this.previewSprite.setAlpha(0.5);
-        this.previewSprite.setTint(0x00ff00);
-    }
-
-    onDrag(
-        pointer: Phaser.Input.Pointer,
-        gameObject: Phaser.GameObjects.Sprite,
-        dragX: number,
-        dragY: number
-    ) {
-        gameObject.x = dragX;
-        gameObject.y = dragY;
-
-        // Update preview sprite position
-        if (this.previewSprite) {
-            const worldPoint = this.cameras.main.getWorldPoint(
-                pointer.x,
-                pointer.y
-            );
-            const pointerXY = this.map.worldToTileXY(
-                worldPoint.x,
-                worldPoint.y,
-                true
-            );
-
-            if (pointerXY) {
-                const tileX = pointerXY.x;
-                const tileY = pointerXY.y;
-                const frameIndex = gameObject.getData("frameIndex");
-                console.log("frameIndex", frameIndex);
-                const { width, height } = getItemDimensions(frameIndex);
-
-                if (this.canPlaceItem(tileX, tileY, width, height)) {
-                    this.previewSprite.setAlpha(0.5);
-                    this.previewSprite.setTint(0x00ff00);
-                } else {
-                    this.previewSprite.setAlpha(0.3);
-                    this.previewSprite.setTint(0xff0000);
-                }
-
-                const worldXY = this.map.tileToWorldXY(tileX, tileY);
-                if (worldXY) {
-                    this.previewSprite.setPosition(
-                        worldXY.x + (width * 64) / 2,
-                        worldXY.y + (height * 64) / 2
-                    );
-                }
-            }
-        }
-    }
-
-    onDragEnd(
-        pointer: Phaser.Input.Pointer,
-        gameObject: Phaser.GameObjects.Sprite
-    ) {
-        gameObject.clearTint();
-
-        // Remove preview sprite
-        if (this.previewSprite) {
-            this.previewSprite.destroy();
-            this.previewSprite = null;
-        }
-
-        const worldPoint = this.cameras.main.getWorldPoint(
-            pointer.x,
-            pointer.y
-        );
-
-        const pointerXY = this.map.worldToTileXY(worldPoint.x, worldPoint.y);
-        if (!pointerXY) return;
-
-        const tileX = Math.floor(pointerXY.x);
-        const tileY = Math.floor(pointerXY.y);
-        const frameIndex = gameObject.getData("frameIndex");
-        const { width, height } = getItemDimensions(frameIndex);
-
-        if (this.canPlaceItem(tileX, tileY, width, height)) {
-            this.placeItem(tileX, tileY, frameIndex, width, height);
-        }
-
-        const dragStartX = gameObject.input?.dragStartX ?? gameObject.x;
-        const dragStartY = gameObject.input?.dragStartY ?? gameObject.y;
-        gameObject.setPosition(dragStartX, dragStartY);
-
-        // Remove the dragged tile
-        if (this.draggedTile) {
-            this.draggedTile = null;
-        }
     }
 
     canPlaceItem(
@@ -593,6 +487,7 @@ export class Game extends Scene {
         const width = this.previewSprite?.getData("width") || 1;
         const height = this.previewSprite?.getData("height") || 1;
 
+        console.log("selectedFrameIndex", this.selectedFrameIndex);
         if (this.canPlaceItem(tileX, tileY, width, height)) {
             this.placeItem(
                 tileX,
