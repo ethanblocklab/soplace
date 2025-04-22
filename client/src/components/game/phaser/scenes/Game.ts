@@ -4,6 +4,7 @@ import {
     getAllItemTileFrames,
     getUserIndexToTileFrame,
 } from "../utils/ItemTileMapper";
+import { getItemDimensions } from "@/data/itemMetadata";
 
 interface PlacedItem {
     id: string;
@@ -11,22 +12,26 @@ interface PlacedItem {
     player: string;
     x: number;
     y: number;
+    width: number; // Width in tiles
+    height: number; // Height in tiles
 }
 
 export class Game extends Scene {
     private controls: Phaser.Cameras.Controls.SmoothedKeyControl;
-    private draggedTile: Phaser.GameObjects.Sprite | null = null;
     private previewSprite: Phaser.GameObjects.Sprite | null = null;
     private itemTiles: Phaser.GameObjects.Sprite[] = [];
     private map: Phaser.Tilemaps.Tilemap;
     private groundLayer!: Phaser.Tilemaps.TilemapLayer;
-    private itemLayer!: Phaser.Tilemaps.TilemapLayer;
     private isDragging: boolean = false;
     private dragStartX: number = 0;
     private dragStartY: number = 0;
     private cameraStartX: number = 0;
     private cameraStartY: number = 0;
     private placedItems: PlacedItem[] = [];
+    private selectedFrameIndex: number | null = null;
+    private minZoom: number = 0.4;
+    private maxZoom: number = 2;
+    private zoomFactor: number = 0.1;
 
     constructor() {
         super("Game");
@@ -44,22 +49,25 @@ export class Game extends Scene {
             EventBus.emit("loading-progress", 1);
         });
 
-        this.load.tilemapTiledJSON("map", "tiles/map2.json");
+        this.load.tilemapTiledJSON("map", "tiles/soplace-map.json");
         this.load.spritesheet("tiles", "tiles/outside.png", {
             frameWidth: 64,
+        });
+
+        // Load decorations spritesheet
+        this.load.spritesheet("decorations", "tiles/decor.png", {
+            frameWidth: 315,
+            frameHeight: 420,
+        });
+        this.load.spritesheet("items", "tiles/items.png", {
+            frameWidth: 512,
+            frameHeight: 512,
         });
 
         this.load.image("background", "tiles/sky_gradient.png");
     }
 
     create() {
-        const bg = this.add
-            .image(0, 0, "background")
-            .setOrigin(0, 0)
-            .setDisplaySize(this.cameras.main.width, this.cameras.main.height)
-            .setScrollFactor(0, 0)
-            .setDepth(-2);
-
         // Create the map
         this.map = this.add.tilemap("map");
 
@@ -67,28 +75,60 @@ export class Game extends Scene {
         const tileset = this.map.addTilesetImage("outside", "tiles");
         if (!tileset) throw new Error("Failed to load tileset");
 
+        const decorTileset = this.map.addTilesetImage("decor", "decorations");
+        if (!decorTileset) throw new Error("Failed to load decor tileset");
+
         // Create the layers
         const layer = this.map.createLayer("Tile Layer 1", tileset);
         if (!layer) throw new Error("Failed to create ground layer");
         this.groundLayer = layer;
 
-        const itemLayer = this.map.createBlankLayer("Tile Layer 2", tileset);
+        // With this implementation
+        const decorObjects = this.map.createFromObjects("decoration", [
+            {
+                gid: 161,
+            },
+            {
+                gid: 162,
+            },
+            {
+                gid: 163,
+            },
+            {
+                gid: 164,
+            },
+        ]);
 
-        if (!itemLayer) throw new Error("Failed to create item layer");
-        this.itemLayer = itemLayer;
+        // Adjust sprites after creation
+        decorObjects.forEach((obj) => {
+            // Set the proper frame if needed (subtracting firstgid)
+            if (obj instanceof Phaser.GameObjects.Sprite) {
+                obj.setOrigin(1, 0.5);
+                obj.setX(obj.x + 32);
+                obj.setY(obj.y + 32);
+            }
+        });
 
         // Set camera bounds with layer offset
         const mapWidth = this.map.widthInPixels;
         const mapHeight = this.map.heightInPixels;
 
-        this.cameras.main.setBounds(-mapWidth / 2, 0, mapWidth, mapHeight);
+        this.cameras.main.setBounds(
+            -mapWidth / 2,
+            0,
+            mapWidth + 64,
+            mapHeight + 64
+        );
+        this.cameras.main.setZoom(1); // Set default zoom level
 
-        // Add mouse drag functionality
+        this.cameras.main.centerOn(0, 0);
+
+        // Add mouse drag functionality for camera movement
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             if (pointer.button === 0) {
                 // Left click
-                // Only enable map dragging if we're not dragging an item
-                if (!this.draggedTile) {
+                // Only enable map dragging if we're not placing an item
+                if (!this.selectedFrameIndex) {
                     this.isDragging = true;
                     this.dragStartX = pointer.x;
                     this.dragStartY = pointer.y;
@@ -106,7 +146,7 @@ export class Game extends Scene {
         });
 
         this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-            if (this.isDragging && !this.draggedTile) {
+            if (this.isDragging && !this.selectedFrameIndex) {
                 const dx = this.dragStartX - pointer.x;
                 const dy = this.dragStartY - pointer.y;
 
@@ -115,7 +155,53 @@ export class Game extends Scene {
             }
         });
 
-        this.createItemPanel();
+        // Listen for item selections from the React component
+        EventBus.on("item-selected", (frameIndex: number) => {
+            this.handleItemSelected(frameIndex);
+        });
+
+        // Listen for cancellation events from the React component
+        EventBus.on("item-selection-cancelled", () => {
+            this.cancelItemSelection();
+        });
+
+        // Set up zoom controls
+        this.setupZoomControls();
+
+        // Listen for placed items from external sources
+        EventBus.on("items-loaded", (items: PlacedItem[]) =>
+            this.initPlacedItems(items)
+        );
+
+        EventBus.emit("current-scene-ready", this);
+    }
+
+    setupZoomControls() {
+        // Add zoom keyboard controls
+        this.input.keyboard?.on("keydown-PLUS", () => {
+            this.zoomIn();
+        });
+
+        this.input.keyboard?.on("keydown-MINUS", () => {
+            this.zoomOut();
+        });
+
+        // Add mousewheel zoom support
+        this.input.on(
+            "wheel",
+            (
+                pointer: Phaser.Input.Pointer,
+                gameObjects: any,
+                deltaX: number,
+                deltaY: number
+            ) => {
+                if (deltaY > 0) {
+                    this.zoomOut();
+                } else {
+                    this.zoomIn();
+                }
+            }
+        );
 
         const cursors = this.input.keyboard!.createCursorKeys();
 
@@ -133,97 +219,100 @@ export class Game extends Scene {
         this.controls = new Phaser.Cameras.Controls.SmoothedKeyControl(
             controlConfig
         );
-
-        this.input.on("dragstart", this.onDragStart, this);
-        this.input.on("drag", this.onDrag, this);
-        this.input.on("dragend", this.onDragEnd, this);
-
-        // Listen for placed items from external sources
-        EventBus.on("items-loaded", (items: PlacedItem[]) =>
-            this.initPlacedItems(items)
-        );
-
-        EventBus.emit("current-scene-ready", this);
     }
 
-    createItemPanel() {
-        const panelX = 32;
-        // const panelY = 0;
-        const tileSize = 64;
-        const padding = 10;
-        const columns = 4;
-        const containerHeight = 400; // Fixed height for the container
+    canPlaceItem(
+        tileX: number,
+        tileY: number,
+        width: number = 1,
+        height: number = 1
+    ): boolean {
+        // Check if any tiles in the area are already occupied
+        for (let x = tileX; x < tileX + width; x++) {
+            for (let y = tileY; y < tileY + height; y++) {
+                // Check if any sprite already exists at this tile position
+                const existingItem = this.itemTiles.find(
+                    (sprite) =>
+                        sprite.getData("tileX") <= x &&
+                        sprite.getData("tileX") + sprite.getData("width") > x &&
+                        sprite.getData("tileY") <= y &&
+                        sprite.getData("tileY") + sprite.getData("height") > y
+                );
 
-        // Create a background rectangle for the panel
-        const background = this.add.rectangle(
-            (columns * (tileSize + padding) + padding) / 2,
-            containerHeight / 2,
-            columns * (tileSize + padding) + padding,
-            containerHeight,
-            0x000000,
-            0.5
-        );
-        background.setScrollFactor(0);
+                if (existingItem) {
+                    return false;
+                }
 
-        const itemTiles = getAllItemTileFrames();
-        for (let i = 0; i < itemTiles.length; i++) {
-            const row = Math.floor(i / columns);
-            const col = i % columns;
-            const x = padding + col * (tileSize + padding);
-            const y = padding + 50 + row * (tileSize + padding);
-
-            const tile = this.add
-                .sprite(panelX + x, y, "tiles", itemTiles[i])
-                .setInteractive()
-                .setData("frameIndex", itemTiles[i]);
-
-            tile.setScrollFactor(0);
-
-            // Add hover effect
-            tile.on("pointerover", () => {
-                tile.setTint(0x66ff66);
-                tile.setScale(1.1);
-            });
-
-            tile.on("pointerout", () => {
-                tile.clearTint();
-                tile.setScale(1);
-            });
-
-            this.input.setDraggable(tile);
-            this.itemTiles.push(tile);
+                // Ensure the ground tile exists (we can only place on valid ground)
+                const groundTile = this.groundLayer.getTileAt(x, y, true);
+                if (groundTile === null || groundTile.index === -1) {
+                    return false;
+                }
+            }
         }
+
+        return true;
     }
 
-    onDragStart(
-        pointer: Phaser.Input.Pointer,
-        gameObject: Phaser.GameObjects.Sprite
+    placeItem(
+        tileX: number,
+        tileY: number,
+        frameIndex: number,
+        width: number = 1,
+        height: number = 1
     ) {
-        this.draggedTile = gameObject;
-        gameObject.setTint(0x66ff66);
+        // Send the placement event to the blockchain
+        EventBus.emit("place-item", tileX, tileY, frameIndex, width, height);
 
-        // Create preview sprite
-        this.previewSprite = this.add.sprite(
-            0,
-            0,
-            "tiles",
-            gameObject.getData("frameIndex")
-        );
-        this.previewSprite.setAlpha(0.5);
-        this.previewSprite.setTint(0x00ff00);
+        // Add event listener for when the item is placed on-chain
+        const handleItemPlaced = (success: boolean, error?: Error) => {
+            // Remove the listener to avoid memory leaks
+            EventBus.removeListener("item-placed", handleItemPlaced);
+
+            if (success) {
+                // Convert tile coordinates to world coordinates
+                const worldXY = this.map.tileToWorldXY(tileX, tileY);
+                if (worldXY) {
+                    // Create a sprite instead of placing a tile
+                    const sprite = this.add.sprite(
+                        worldXY.x + (width * 64) / 2, // Center in the tile group
+                        worldXY.y + (height * 64) / 2,
+                        "items",
+                        frameIndex
+                    );
+
+                    // Scale based on the item size
+                    const scaleX = (width * 64) / 512;
+                    const scaleY = (height * 64) / 512;
+                    sprite.setScale(scaleX, scaleY);
+
+                    // Store the sprite for later management
+                    this.itemTiles.push(sprite);
+
+                    // Store data in the sprite for identification
+                    sprite.setData("tileX", tileX);
+                    sprite.setData("tileY", tileY);
+                    sprite.setData("frameIndex", frameIndex);
+                    sprite.setData("width", width);
+                    sprite.setData("height", height);
+                }
+
+                console.log(
+                    `Item placed at (${tileX}, ${tileY}) with size ${width}x${height} and type ${frameIndex}`
+                );
+            }
+        };
+
+        // Add the listener
+        EventBus.on("item-placed", handleItemPlaced);
     }
 
-    onDrag(
-        pointer: Phaser.Input.Pointer,
-        gameObject: Phaser.GameObjects.Sprite,
-        dragX: number,
-        dragY: number
-    ) {
-        gameObject.x = dragX;
-        gameObject.y = dragY;
+    update(time: number, delta: number) {
+        this.controls.update(delta);
 
-        // Update preview sprite position
-        if (this.previewSprite) {
+        // Update preview sprite position if it exists
+        if (this.previewSprite && this.selectedFrameIndex !== null) {
+            const pointer = this.input.activePointer;
             const worldPoint = this.cameras.main.getWorldPoint(
                 pointer.x,
                 pointer.y
@@ -237,8 +326,13 @@ export class Game extends Scene {
             if (pointerXY) {
                 const tileX = pointerXY.x;
                 const tileY = pointerXY.y;
+                const width = this.previewSprite.getData("width") || 1;
+                const height = this.previewSprite.getData("height") || 1;
 
-                if (this.canPlaceItem(tileX, tileY)) {
+                // Make preview visible when over the map
+                this.previewSprite.visible = true;
+
+                if (this.canPlaceItem(tileX, tileY, width, height)) {
                     this.previewSprite.setAlpha(0.5);
                     this.previewSprite.setTint(0x00ff00);
                 } else {
@@ -249,112 +343,191 @@ export class Game extends Scene {
                 const worldXY = this.map.tileToWorldXY(tileX, tileY);
                 if (worldXY) {
                     this.previewSprite.setPosition(
-                        worldXY.x + 32,
-                        worldXY.y + 32
+                        worldXY.x + (width * 64) / 2,
+                        worldXY.y + (height * 64) / 2
                     );
                 }
+            } else {
+                // Hide preview when outside the map area
+                this.previewSprite.visible = false;
             }
         }
-    }
-
-    onDragEnd(
-        pointer: Phaser.Input.Pointer,
-        gameObject: Phaser.GameObjects.Sprite
-    ) {
-        gameObject.clearTint();
-
-        // Remove preview sprite
-        if (this.previewSprite) {
-            this.previewSprite.destroy();
-            this.previewSprite = null;
-        }
-
-        const worldPoint = this.cameras.main.getWorldPoint(
-            pointer.x,
-            pointer.y
-        );
-
-        const pointerXY = this.map.worldToTileXY(worldPoint.x, worldPoint.y);
-        if (!pointerXY) return;
-
-        const tileX = Math.floor(pointerXY.x);
-        const tileY = Math.floor(pointerXY.y);
-
-        if (this.canPlaceItem(tileX, tileY)) {
-            const frameIndex = gameObject.getData("frameIndex");
-            this.placeItem(tileX, tileY, frameIndex);
-        }
-
-        const dragStartX = gameObject.input?.dragStartX ?? gameObject.x;
-        const dragStartY = gameObject.input?.dragStartY ?? gameObject.y;
-        gameObject.setPosition(dragStartX, dragStartY);
-
-        // Remove the dragged tile
-        if (this.draggedTile) {
-            this.draggedTile = null;
-        }
-    }
-
-    canPlaceItem(tileX: number, tileY: number): boolean {
-        const itemTile = this.itemLayer.getTileAt(tileX, tileY, true);
-        if (itemTile && itemTile.index !== -1) {
-            return false;
-        }
-
-        const groundTile = this.groundLayer.getTileAt(tileX, tileY, true);
-        return groundTile !== null && groundTile.index !== -1;
-    }
-
-    placeItem(tileX: number, tileY: number, frameIndex: number) {
-        // frameIndex could be either a direct tile frame index or a user index (1-18)
-        // We'll send the raw frameIndex to the blockchain
-        EventBus.emit("place-item", tileX, tileY, frameIndex);
-
-        // Add event listener for when the item is placed on-chain
-        const handleItemPlaced = (success: boolean, error?: Error) => {
-            // Remove the listener to avoid memory leaks
-            EventBus.removeListener("item-placed", handleItemPlaced);
-
-            if (success) {
-                // If the transaction was successful, visualize the tile
-                this.itemLayer.putTileAt(frameIndex + 1, tileX, tileY);
-
-                console.log(
-                    `Item placed at (${tileX}, ${tileY}) with type ${frameIndex}`
-                );
-            }
-        };
-
-        // Add the listener
-        EventBus.on("item-placed", handleItemPlaced);
-    }
-
-    update(time: number, delta: number) {
-        this.controls.update(delta);
     }
 
     // Initialize placed items from GraphQL data
     initPlacedItems(items: PlacedItem[]) {
         this.placedItems = items;
 
-        // Clear any existing items first
-        // this.itemLayer.forEachTile((tile) => {
-        //     if (tile && tile.index !== -1) {
-        //         this.itemLayer.removeTileAt(tile.x, tile.y);
-        //     }
-        // });
+        // Clean up existing item sprites
+        this.itemTiles.forEach((sprite) => sprite.destroy());
+        this.itemTiles = [];
 
-        // Place each item on the tilemap
+        // Place each item on the map as a sprite
         for (const item of this.placedItems) {
-            const { x, y, itemId } = item;
+            const { x, y, itemId, width = 1, height = 1 } = item;
 
-            // Get the correct frame index for the tileset
-            const frameIndex = getUserIndexToTileFrame(itemId);
+            // Convert tile coordinates to world coordinates
+            const worldXY = this.map.tileToWorldXY(x, y);
+            if (worldXY) {
+                // Create a sprite for the item
+                const sprite = this.add.sprite(
+                    worldXY.x + (width * 64) / 2, // Center in the tile group
+                    worldXY.y + (height * 64) / 2,
+                    "items",
+                    itemId
+                );
 
-            // Place the item directly on the layer
-            if (!this.itemLayer.getTileAt(x, y)) {
-                this.itemLayer.putTileAt(frameIndex + 1, x, y);
+                // Scale based on the item size
+                const scaleX = (width * 64) / 512;
+                const scaleY = (height * 64) / 512;
+                sprite.setScale(scaleX, scaleY);
+
+                // Store the sprite for later management
+                this.itemTiles.push(sprite);
+
+                // Store data in the sprite for identification
+                sprite.setData("tileX", x);
+                sprite.setData("tileY", y);
+                sprite.setData("frameIndex", itemId);
+                sprite.setData("width", width);
+                sprite.setData("height", height);
             }
+        }
+    }
+
+    // Add new method to handle item selection from the React component
+    handleItemSelected(frameIndex: number) {
+        this.selectedFrameIndex = frameIndex;
+
+        // Get dimensions from metadata
+        const { width, height } = getItemDimensions(frameIndex);
+
+        // Create a preview sprite when an item is selected
+        if (this.previewSprite) {
+            this.previewSprite.destroy();
+        }
+
+        // Use the "items" texture for the preview
+        this.previewSprite = this.add.sprite(0, 0, "items", frameIndex);
+
+        // Scale based on the item size from metadata
+        const scaleX = (width * 64) / 512;
+        const scaleY = (height * 64) / 512;
+        this.previewSprite.setScale(scaleX, scaleY);
+
+        this.previewSprite.setAlpha(0.5);
+        this.previewSprite.setTint(0x00ff00);
+
+        // Store width and height in the preview sprite for reference
+        this.previewSprite.setData("width", width);
+        this.previewSprite.setData("height", height);
+
+        // Hide the preview initially until mouse moves over valid position
+        this.previewSprite.visible = false;
+
+        // Enable placing items by clicking on map
+        this.input.on("pointerdown", this.handleMapClick, this);
+
+        // Add right-click handling to cancel selection
+        this.input.on("pointerdown", this.handleRightClick, this);
+
+        // Add Escape key handling to cancel selection
+        this.input.keyboard?.on("keydown-ESC", this.cancelItemSelection, this);
+    }
+
+    // Add method to handle right-click for cancellation
+    handleRightClick(pointer: Phaser.Input.Pointer) {
+        // Check if it's a right click (button 2)
+        if (pointer.button === 2) {
+            this.cancelItemSelection();
+        }
+    }
+
+    // Add method to cancel item selection
+    cancelItemSelection() {
+        // Only proceed if we have an active selection
+        if (this.selectedFrameIndex === null && !this.previewSprite) return;
+
+        // Clear the selection
+        this.selectedFrameIndex = null;
+
+        // Remove the preview sprite
+        if (this.previewSprite) {
+            this.previewSprite.destroy();
+            this.previewSprite = null;
+        }
+
+        // Remove the click handlers
+        this.input.off("pointerdown", this.handleMapClick, this);
+        this.input.off("pointerdown", this.handleRightClick, this);
+
+        // Remove the keyboard handler
+        this.input.keyboard?.off("keydown-ESC", this.cancelItemSelection, this);
+
+        // Notify the React component about the cancellation
+        EventBus.emit("item-selection-cancelled");
+    }
+
+    handleMapClick(pointer: Phaser.Input.Pointer) {
+        // Only handle clicks if we have a selected item
+        if (!this.selectedFrameIndex || this.isDragging) return;
+
+        // Ignore right clicks in this handler
+        if (pointer.button !== 0) return;
+
+        const worldPoint = this.cameras.main.getWorldPoint(
+            pointer.x,
+            pointer.y
+        );
+        const pointerXY = this.map.worldToTileXY(worldPoint.x, worldPoint.y);
+        if (!pointerXY) return;
+
+        const tileX = Math.floor(pointerXY.x);
+        const tileY = Math.floor(pointerXY.y);
+        const width = this.previewSprite?.getData("width") || 1;
+        const height = this.previewSprite?.getData("height") || 1;
+
+        console.log("selectedFrameIndex", this.selectedFrameIndex);
+        if (this.canPlaceItem(tileX, tileY, width, height)) {
+            this.placeItem(
+                tileX,
+                tileY,
+                this.selectedFrameIndex,
+                width,
+                height
+            );
+        }
+    }
+
+    // Add this method for cleanup
+    shutdown() {
+        // Clean up all event listeners to prevent memory leaks
+        EventBus.removeAllListeners("item-selected");
+        EventBus.removeAllListeners("item-selection-cancelled");
+
+        // Remove keyboard listeners
+        this.input.keyboard?.off("keydown-ESC", this.cancelItemSelection, this);
+
+        // Clean up other resources
+        if (this.previewSprite) {
+            this.previewSprite.destroy();
+            this.previewSprite = null;
+        }
+
+        this.itemTiles.forEach((tile) => tile.destroy());
+        this.itemTiles = [];
+    }
+
+    // Add zoom methods
+    zoomIn() {
+        if (this.cameras.main.zoom < this.maxZoom) {
+            this.cameras.main.zoom += this.zoomFactor;
+        }
+    }
+
+    zoomOut() {
+        if (this.cameras.main.zoom > this.minZoom) {
+            this.cameras.main.zoom -= this.zoomFactor;
         }
     }
 }

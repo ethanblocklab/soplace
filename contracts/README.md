@@ -91,12 +91,14 @@ To check what's on a tile:
 
 ## Deployment
 
-Implementation deployed at: 0x12B1247B11c02CC8Dce4f984f7A7fE7Cef9b7E67
-Proxy deployed at: 0x25347B4f8449cCCDEEB52912c0d0d3a1613C98E4
-
 == Logs ==
-Implementation deployed at: 0x81114ba183ac4E916d14fD4dAD90224210F2b302
-Proxy deployed at: 0x89e325D556d760a38bDA9f15De5359a6B17C75Ad
+Implementation deployed at: 0xeA909DB6789C28F5a281b2A0145BC8DBa727ab85
+Proxy deployed at: 0x920eFEe19B77027dF1428984803d68124bdB271f
+
+✅ [Success] Hash: 0x97803d20379f4df2392e134188e47b16c4c6d8e57f4b87f9a66e73286ca8fd37
+Contract Address: 0x920eFEe19B77027dF1428984803d68124bdB271f
+Block: 52211161
+Paid: 0.00447948 ETH (149316 gas \* 30 gwei)
 
 ## License
 

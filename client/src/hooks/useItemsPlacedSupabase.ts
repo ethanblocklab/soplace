@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@supabase/supabase-js";
+import { getItemDimensions } from "@/data/itemMetadata";
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -15,8 +16,14 @@ interface ItemPlaced {
     y: number;
 }
 
+// Extended interface with dimensions
+export interface EnhancedItemPlaced extends ItemPlaced {
+    width: number;
+    height: number;
+}
+
 interface ItemPlacedResponse {
-    itemPlaceds: ItemPlaced[];
+    itemPlaceds: EnhancedItemPlaced[];
 }
 
 /**
@@ -38,13 +45,18 @@ export function useItemsPlacedSupabase() {
             }
 
             // Transform Supabase data to match GraphQL response format
-            const itemPlaceds = (data || []).map((item) => ({
-                id: `${item.x}-${item.y}`, // Create a unique id
-                itemId: item.item_id,
-                player: item.player,
-                x: item.x,
-                y: item.y,
-            }));
+            const itemPlaceds = (data || []).map((item) => {
+                const dimensions = getItemDimensions(item.item_id);
+                return {
+                    id: `${item.x}-${item.y}`, // Create a unique id
+                    itemId: item.item_id,
+                    player: item.player,
+                    x: item.x,
+                    y: item.y,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                };
+            });
 
             return { itemPlaceds };
         },
