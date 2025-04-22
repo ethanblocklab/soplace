@@ -24,13 +24,21 @@ contract IsometricTilemap is
         bool isOccupied;
     }
     
+    struct ItemMetadata {
+        uint8 width;
+        uint8 height;
+        bool isConfigured;
+    }
+    
     mapping(uint16 => mapping(uint16 => Tile)) public tiles;
+    mapping(uint8 => ItemMetadata) public itemConfigs;
     uint256 public placementFee;
     uint8 public availableItemCount;
     
     event ItemPlaced(address indexed player, uint16 x, uint16 y, uint8 itemId);
     event ItemUpdated(address indexed player, uint16 x, uint16 y, uint8 newItemId);
     event PlacementFeeChanged(uint256 newFee);
+    event ItemConfigured(uint8 itemId, uint8 width, uint8 height);
     
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -59,33 +67,67 @@ contract IsometricTilemap is
     function placeItem(uint16 x, uint16 y, uint8 itemId) external payable nonReentrant {
         require(x < MAP_SIZE && y < MAP_SIZE, "Coordinates out of bounds");
         require(itemId >= 1 && itemId <= availableItemCount, "Invalid item ID");
-        require(!tiles[x][y].isOccupied, "Tile already occupied");
+        require(itemConfigs[itemId].isConfigured, "Item not configured");
         require(msg.value >= placementFee, "Insufficient payment");
         
-        tiles[x][y] = Tile({
-            owner: msg.sender,
-            itemId: itemId,
-            isOccupied: true
-        });
+        // Check if item fits on map bounds
+        require(x + itemConfigs[itemId].width <= MAP_SIZE && y + itemConfigs[itemId].height <= MAP_SIZE, 
+                "Item exceeds map bounds");
+        
+        // Check for collisions with existing items
+        require(!hasCollision(x, y, itemConfigs[itemId].width, itemConfigs[itemId].height), 
+                "Placement would cause collision");
+        
+        // Mark all tiles occupied by this item
+        for (uint8 i = 0; i < itemConfigs[itemId].width; i++) {
+            for (uint8 j = 0; j < itemConfigs[itemId].height; j++) {
+                tiles[x + i][y + j] = Tile({
+                    owner: msg.sender,
+                    itemId: itemId,
+                    isOccupied: true
+                });
+            }
+        }
         
         emit ItemPlaced(msg.sender, x, y, itemId);
     }
     
     /**
-     * @dev Updates an item on the map (only the owner can update their item)
+     * @dev Checks if placing an item would cause a collision
      * @param x The x coordinate
      * @param y The y coordinate
-     * @param newItemId The new ID of the item to place (1-18)
+     * @param width The width of the item
+     * @param height The height of the item
+     * @return bool Whether there would be a collision
      */
-    function updateItem(uint16 x, uint16 y, uint8 newItemId) external {
-        require(x < MAP_SIZE && y < MAP_SIZE, "Coordinates out of bounds");
-        require(newItemId >= 0 && newItemId <= availableItemCount, "Invalid item ID");
-        require(tiles[x][y].isOccupied, "Tile is not occupied");
-        require(tiles[x][y].owner == msg.sender, "Not the owner of this item");
+    function hasCollision(uint16 x, uint16 y, uint8 width, uint8 height) public view returns (bool) {
+        for (uint8 i = 0; i < width; i++) {
+            for (uint8 j = 0; j < height; j++) {
+                if (tiles[x + i][y + j].isOccupied) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * @dev Configure metadata for an item
+     * @param itemId The ID of the item to configure
+     * @param width The width of the item
+     * @param height The height of the item
+     */
+    function configureItem(uint8 itemId, uint8 width, uint8 height) external onlyOwner {
+        require(itemId >= 1 && itemId <= availableItemCount, "Invalid item ID");
+        require(width > 0 && height > 0, "Dimensions must be positive");
         
-        tiles[x][y].itemId = newItemId;
+        itemConfigs[itemId] = ItemMetadata({
+            width: width,
+            height: height,
+            isConfigured: true
+        });
         
-        emit ItemUpdated(msg.sender, x, y, newItemId);
+        emit ItemConfigured(itemId, width, height);
     }
     
     /**
@@ -100,6 +142,18 @@ contract IsometricTilemap is
         require(x < MAP_SIZE && y < MAP_SIZE, "Coordinates out of bounds");
         Tile memory tile = tiles[x][y];
         return (tile.owner, tile.itemId, tile.isOccupied);
+    }
+    
+    /**
+     * @dev Get item configuration
+     * @param itemId The ID of the item
+     * @return width The width of the item
+     * @return height The height of the item
+     */
+    function getItemConfig(uint8 itemId) external view returns (uint8 width, uint8 height) {
+        require(itemId >= 1 && itemId <= availableItemCount, "Invalid item ID");
+        require(itemConfigs[itemId].isConfigured, "Item not configured");
+        return (itemConfigs[itemId].width, itemConfigs[itemId].height);
     }
     
     /**
